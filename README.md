@@ -68,3 +68,7 @@ Ensure you have Python 3.7+ installed.
 2. **Storage**: The application stores only the ciphertext, an expiry timestamp, and an optional password hash in `data/<uuid>.json`.
 3. **Sharing**: A unique URL is generated containing the ID and the decryption key in the URL hash fragment (`http://site.com/v/<id>#<key>`).
 4. **Viewing**: The recipient opens the URL. A confirmation page appears. Upon clicking "View Secret", the browser sends the key back to the server. The server reads the file, **immediately deletes it** from the filesystem, decrypts the content, and returns the plain text to be rendered securely on the frontend.
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
