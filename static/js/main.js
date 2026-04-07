@@ -45,6 +45,18 @@ function renderMath(element) {
 document.addEventListener('DOMContentLoaded', () => {
     setupMarkdownCompiler();
     
+    // ---- Theme Toggle ----
+    const themeToggle = document.getElementById('theme-toggle');
+    if (themeToggle) {
+        themeToggle.addEventListener('click', () => {
+            const html = document.documentElement;
+            const current = html.getAttribute('data-theme');
+            const next = current === 'light' ? 'dark' : 'light';
+            html.setAttribute('data-theme', next);
+            localStorage.setItem('theme', next);
+        });
+    }
+    
     // ---- Page: Create Secret ----
     const createBtn = document.getElementById('btn-create');
     if (createBtn) {
@@ -149,6 +161,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     // ---- Page: View Confirm ----
+    const envWrapper = document.getElementById('envelope-wrapper');
+    if (envWrapper) {
+        envWrapper.addEventListener('click', function(e) {
+            // Don't toggle if clicking inside the letter content
+            if (e.target.closest('#secret-letter')) return;
+            this.classList.add('open');
+        });
+    }
+
     const viewBtn = document.getElementById('btn-view');
     if (viewBtn) {
         // Format timestamps

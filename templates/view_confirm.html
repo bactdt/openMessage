@@ -1,33 +1,66 @@
 {% extends "base.html" %}
 {% block content %}
 
-<div class="glass-panel text-center" id="confirm-panel">
-    <div class="icon-circle warning-icon">
-        <svg viewBox="0 0 24 24" width="32" height="32" stroke="currentColor" stroke-width="2" fill="none" class="css-i6dzq1"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+<div id="confirm-panel">
+    <div class="text-center mb-4">
+        <h2>You have a Secret Message!</h2>
+        <p class="subtitle mt-2">Click the envelope to open it.</p>
     </div>
     
-    <div class="panel-header">
-        <h2>Read Secret Message?</h2>
-        <p class="warning-text">This message will self-destruct immediately after viewing. You cannot view it again.</p>
+    <div class="envelope-scene">
+        <div class="envelope-wrapper" id="envelope-wrapper">
+            <div class="envelope">
+                <div class="envelope-inner"></div>
+                
+                <!-- Decorative address lines -->
+                <div class="envelope-lines">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+                
+                <!-- The letter paper inside -->
+                <div class="letter" id="secret-letter">
+                    <div class="panel-header text-center" style="margin-bottom: 0.5rem;">
+                        <h3 style="font-size: 1.1rem; color: #9d0006; font-family: Georgia, serif;">⚠ Burn After Reading</h3>
+                    </div>
+                    
+                    <div class="meta-info" style="margin: 0.5rem 0; padding: 0.5rem; font-size: 0.75rem;">
+                        <p>Created: <span class="time-created" data-time="{{ msg.created_at }}"></span></p>
+                        <p>Expires: <span class="time-expires" data-time="{{ msg.expires_at }}"></span></p>
+                    </div>
+                    
+                    {% if msg.has_password %}
+                    <div class="form-group text-left mt-2">
+                        <label for="view-password" style="font-size: 0.75rem;">Password Required:</label>
+                        <input type="password" id="view-password" placeholder="Enter password" style="padding: 0.4rem; font-size: 0.8rem;">
+                    </div>
+                    {% endif %}
+                    
+                    <button class="btn btn-primary btn-block mt-4" id="btn-view" data-id="{{ msg.id }}" data-has-password="{{ 'true' if msg.has_password else 'false' }}">
+                        <span class="btn-text">View Secret</span>
+                    </button>
+                    
+                    <div id="view-error" class="error-msg hidden" style="padding: 0.4rem; font-size: 0.75rem;"></div>
+                </div>
+                
+                <!-- Front fold (V shape) -->
+                <div class="envelope-fold"></div>
+                
+                <!-- Top flap (triangle) -->
+                <div class="envelope-flap">
+                    <div class="envelope-flap-face"></div>
+                </div>
+                
+                <!-- Red wax seal -->
+                <div class="wax-seal">
+                    <div class="wax-seal-circle">
+                        <span class="wax-seal-text">S</span>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
-    
-    <div class="meta-info">
-        <p>Created: <span class="time-created" data-time="{{ msg.created_at }}"></span></p>
-        <p>Expires: <span class="time-expires" data-time="{{ msg.expires_at }}"></span></p>
-    </div>
-    
-    {% if msg.has_password %}
-    <div class="form-group text-left mt-6">
-        <label for="view-password">This secret is password protected</label>
-        <input type="password" id="view-password" placeholder="Enter password to unlock">
-    </div>
-    {% endif %}
-    
-    <button class="btn btn-primary btn-block mt-6" id="btn-view" data-id="{{ msg.id }}" data-has-password="{{ 'true' if msg.has_password else 'false' }}">
-        <span class="btn-text">View Secret</span>
-    </button>
-    
-    <div id="view-error" class="error-msg hidden"></div>
 </div>
 
 {% endblock %}

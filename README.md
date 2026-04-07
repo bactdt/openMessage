@@ -10,8 +10,9 @@ OpenMessage is a secure, view-once, self-destructing message application built w
 - **Optional Password Protection**: Add a secondary layer of security to your messages.
 - **Expiration Logic**: Messages automatically self-destruct if not viewed within the configured time (1 hour, 24 hours, or 7 days).
 - **Rich Text Support**: Full support for rendering Markdown and LaTeX (via KaTeX).
-- **Modern UI**: Stunning "glassmorphism" design with a dark mode aesthetic.
+- **Retro UI**: A warm, terminal-inspired retro aesthetic with Gruvbox colors.
 - **Safe Previews**: Link preview crawlers (like Slack, Discord, or iMessage) will not accidentally burn the message. Viewing requires an explicit user action.
+- **Interactive Envelope**: A satisfying CSS-animated paper envelope and red wax seal to "open" your secret.
 
 ## Screenshots
 
