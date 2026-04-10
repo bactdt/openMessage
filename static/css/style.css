@@ -644,10 +644,10 @@ input, textarea, select,
 }
 
 /* ========================================
-   Realistic Envelope with Wax Seal
+   Envelope with Wax Seal — White Design
    ======================================== */
 .envelope-scene {
-    perspective: 800px;
+    perspective: 1000px;
     width: 100%;
     max-width: 420px;
     margin: 1.5rem auto;
@@ -660,42 +660,90 @@ input, textarea, select,
     z-index: 10;
 }
 
-/* The envelope body — kraft paper look */
+/* White envelope body */
 .envelope {
     position: relative;
     width: 100%;
     height: 260px;
-    background: #c9a96e;
-    border: 2px solid #a0804a;
+    background: #ffffff;
+    border: 2px solid #d0d0d0;
     border-radius: 6px 6px 4px 4px;
-    box-shadow: 3px 3px 0px #8b6c3f, inset 0 0 30px rgba(0,0,0,0.08);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.12), 0 1px 3px rgba(0,0,0,0.08);
     overflow: visible;
-    transition: transform 0.3s ease;
+    transform-style: preserve-3d;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 
-[data-theme="light"] .envelope {
-    background: #d4b07a;
-    border-color: #b8945a;
-    box-shadow: 3px 3px 0px #a0804a, inset 0 0 30px rgba(0,0,0,0.05);
+[data-theme="dark"] .envelope {
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4), 0 0 24px rgba(255,255,255,0.04);
 }
 
 .envelope-wrapper:hover .envelope {
     transform: translateY(-4px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.16), 0 2px 6px rgba(0,0,0,0.1);
 }
+
 .envelope-wrapper.open:hover .envelope {
     transform: none;
 }
 
-/* Inner shadow to simulate depth */
+/* Inner depth shadow */
 .envelope-inner {
     position: absolute;
     inset: 0;
-    background: linear-gradient(180deg, rgba(0,0,0,0.03) 0%, rgba(0,0,0,0) 40%);
-    border-radius: 4px;
+    background: linear-gradient(180deg, rgba(0,0,0,0.02) 0%, rgba(0,0,0,0) 40%);
+    border-radius: 4px 4px 2px 2px;
     z-index: 1;
 }
 
-/* Top flap — the triangular flap */
+/* Decorative address lines on envelope body */
+.envelope-lines {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 60%;
+    z-index: 2;
+    pointer-events: none;
+}
+
+.envelope-lines span {
+    display: block;
+    height: 1px;
+    background: rgba(0,0,0,0.06);
+    border-radius: 1px;
+    margin-bottom: 12px;
+}
+
+.envelope-lines span:nth-child(1) { width: 100%; }
+.envelope-lines span:nth-child(2) { width: 80%; }
+.envelope-lines span:nth-child(3) { width: 60%; }
+
+/* ---- Bottom fold (decorative V on front) ---- */
+.envelope-fold {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 100%;
+    z-index: 3;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+.envelope-fold::before {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: -2px;
+    right: -2px;
+    height: 140px;
+    clip-path: polygon(0 100%, 50% 15%, 100% 100%);
+    background: #f2f2f2;
+    border-top: 1px solid #e0e0e0;
+}
+
+/* ---- Top flap (triangle that opens) ---- */
 .envelope-flap {
     position: absolute;
     top: 0;
@@ -704,65 +752,50 @@ input, textarea, select,
     height: 130px;
     transform-origin: top center;
     z-index: 5;
-    transition: transform 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: transform 1s cubic-bezier(0.4, 0, 0.2, 1);
+    transform-style: preserve-3d;
 }
 
 .envelope-flap-face {
     width: 100%;
     height: 100%;
     clip-path: polygon(0 0, 100% 0, 50% 100%);
-    background: #b8945a;
-    border: 2px solid #a0804a;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-
-[data-theme="light"] .envelope-flap-face {
-    background: #c9a66e;
-    border-color: #b08850;
-}
-
-/* Inner part of flap (visible when open — shows backside) */
-.envelope-flap-back {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    clip-path: polygon(0 0, 100% 0, 50% 100%);
-    background: #a0804a;
+    background: #f7f7f7;
+    border: 2px solid #d0d0d0;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.06);
     backface-visibility: hidden;
-    transform: rotateX(180deg);
 }
 
 /* ---- Wax Seal ---- */
 .wax-seal {
     position: absolute;
-    top: 85px;
+    top: 80px;
     left: 50%;
     transform: translateX(-50%);
     z-index: 6;
-    width: 64px;
-    height: 64px;
+    width: 62px;
+    height: 62px;
     transition: opacity 0.3s ease, transform 0.4s ease;
+    cursor: pointer;
 }
 
 .wax-seal-circle {
-    width: 64px;
-    height: 64px;
+    width: 62px;
+    height: 62px;
     border-radius: 50%;
-    background: radial-gradient(circle at 35% 35%, #e84040, #b71c1c 60%, #8b0000);
+    background: radial-gradient(circle at 35% 35%, #e84040, #c0392b 50%, #8b0000);
     border: 3px solid #8b0000;
     box-shadow:
-        0 2px 8px rgba(139, 0, 0, 0.4),
-        inset 0 -2px 4px rgba(0,0,0,0.2),
-        inset 0 2px 4px rgba(255,255,255,0.15);
+        0 3px 10px rgba(139, 0, 0, 0.4),
+        0 1px 3px rgba(0,0,0,0.15),
+        inset 0 -3px 6px rgba(0,0,0,0.2),
+        inset 0 3px 6px rgba(255,255,255,0.15);
     display: flex;
     align-items: center;
     justify-content: center;
     position: relative;
 }
 
-/* Decorative edge bumps on the wax seal */
 .wax-seal-circle::before {
     content: '';
     position: absolute;
@@ -780,10 +813,9 @@ input, textarea, select,
     border: 2px dashed rgba(139, 0, 0, 0.3);
 }
 
-/* The embossed letter S in the seal */
 .wax-seal-text {
     color: #ffd9d9;
-    font-size: 1.6rem;
+    font-size: 1.5rem;
     font-weight: 900;
     text-shadow: 0 1px 2px rgba(0,0,0,0.4), 0 -1px 0 rgba(255,255,255,0.1);
     font-family: Georgia, 'Times New Roman', serif;
@@ -791,47 +823,55 @@ input, textarea, select,
 }
 
 /* ---- Opening Animation ---- */
+
+/* 1. Wax seal breaks */
+.envelope-wrapper.open .wax-seal {
+    opacity: 0;
+    transform: translateX(-50%) scale(0.3) rotate(20deg);
+    pointer-events: none;
+}
+
+/* 2. Flap opens backward */
 .envelope-wrapper.open .envelope-flap {
     transform: rotateX(-180deg);
     z-index: 0;
 }
 
-.envelope-wrapper.open .wax-seal {
+/* 3. Decorative lines fade */
+.envelope-wrapper.open .envelope-lines {
     opacity: 0;
-    transform: translateX(-50%) scale(0.5);
-    pointer-events: none;
+    transition: opacity 0.3s ease;
 }
 
-/* ---- The Letter / Paper ---- */
+/* ---- Letter / Paper ---- */
 .letter {
     position: absolute;
     bottom: 15px;
     left: 50%;
-    transform: translateX(-50%);
-    width: 88%;
-    background: #faf5e8;
-    border: 1px solid #d5c4a1;
-    border-radius: 2px;
+    transform: translateX(-50%) translateY(20px);
+    width: 86%;
+    background: #faf8f0;
+    border: 1px solid #e8dcc8;
+    border-radius: 3px;
     padding: 1.5rem 1.25rem;
     z-index: 2;
-    transition: transform 0.7s 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    opacity: 0;
+    pointer-events: none;
     display: flex;
     flex-direction: column;
     justify-content: center;
-    /* Paper texture */
     box-shadow:
-        0 1px 3px rgba(0,0,0,0.08),
-        inset 0 0 40px rgba(0,0,0,0.02);
-    overflow: hidden;
-    /* faint ruled lines */
+        0 2px 8px rgba(0,0,0,0.06),
+        inset 0 0 40px rgba(0,0,0,0.015);
     background-image: repeating-linear-gradient(
-        transparent, transparent 27px, #e8dcc8 28px
+        transparent, transparent 27px, #ede5d3 28px
     );
     background-size: 100% 28px;
     background-position: 0 12px;
+    transition: opacity 0.5s ease 0.4s,
+                transform 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) 0.4s;
 }
 
-/* Paper color override for dark theme readability */
 :root .letter {
     color: #3c3836;
 }
@@ -862,60 +902,12 @@ input, textarea, select,
     color: #3c3836;
 }
 
+/* Letter rises out of envelope when opened */
 .envelope-wrapper.open .letter {
-    transform: translateX(-50%) translateY(-200px);
+    transform: translateX(-50%) translateY(-220px);
+    opacity: 1;
     z-index: 7;
+    pointer-events: auto;
     overflow: visible;
 }
-
-/* ---- Bottom fold lines (decorative V on front) ---- */
-.envelope-fold {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 100%;
-    z-index: 3;
-    pointer-events: none;
-    overflow: hidden;
-}
-
-.envelope-fold::before {
-    content: '';
-    position: absolute;
-    bottom: 0;
-    left: -2px;
-    right: -2px;
-    height: 140px;
-    clip-path: polygon(0 100%, 50% 15%, 100% 100%);
-    background: #b8945a;
-    border-top: 2px solid #a0804a;
-}
-
-[data-theme="light"] .envelope-fold::before {
-    background: #c9a66e;
-    border-top-color: #b08850;
-}
-
-/* Decorative lines on envelope body */
-.envelope-lines {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 60%;
-    z-index: 2;
-    pointer-events: none;
-}
-
-.envelope-lines span {
-    display: block;
-    height: 2px;
-    background: rgba(0,0,0,0.06);
-    margin-bottom: 10px;
-    border-radius: 1px;
-}
-
-.envelope-lines span:nth-child(2) { width: 80%; }
-.envelope-lines span:nth-child(3) { width: 60%; }
 

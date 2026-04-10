@@ -162,10 +162,12 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // ---- Page: View Confirm ----
     const envWrapper = document.getElementById('envelope-wrapper');
+    let envelopeOpened = false;
     if (envWrapper) {
         envWrapper.addEventListener('click', function(e) {
-            // Don't toggle if clicking inside the letter content
+            if (envelopeOpened) return;
             if (e.target.closest('#secret-letter')) return;
+            envelopeOpened = true;
             this.classList.add('open');
         });
     }
@@ -228,17 +230,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 // We use DOM manipulation here to prevent URL change
                 const panel = document.getElementById('confirm-panel');
                 
-                // Keep the HTML inside to look like the view page
                 panel.innerHTML = `
-                    <div class="panel-header protected-header text-left">
+                    <div class="panel-header protected-header text-left" style="opacity:0;transform:translateY(10px);transition:opacity 0.4s ease,transform 0.4s ease;">
                         <h2>Secure Message</h2>
                         <span class="badge badge-danger">Destroyed on Server</span>
                     </div>
                     
-                    <div class="secret-content-box markdown-body text-left" id="decrypted-content">
+                    <div class="secret-content-box markdown-body text-left" id="decrypted-content" style="opacity:0;transform:translateY(15px);transition:opacity 0.5s ease 0.15s,transform 0.5s ease 0.15s;">
                     </div>
                     
-                    <div class="action-row text-center mt-6">
+                    <div class="action-row text-center mt-6" style="opacity:0;transition:opacity 0.4s ease 0.35s;">
                         <p class="help-text mb-4">This message is no longer available on the server. Do not refresh this page.</p>
                         <a href="/" class="btn btn-secondary">Create your own secret</a>
                     </div>
@@ -247,6 +248,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 const contentBox = document.getElementById('decrypted-content');
                 contentBox.innerHTML = processContent(body.content);
                 renderMath(contentBox);
+
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        panel.querySelectorAll('[style*="opacity:0"]').forEach(el => {
+                            el.style.opacity = '1';
+                            el.style.transform = 'translateY(0)';
+                        });
+                    });
+                });
             })
             .catch(err => {
                 errorMsg.textContent = err.message;
