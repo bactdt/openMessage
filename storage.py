@@ -3,9 +3,13 @@ import json
 import re
 import uuid
 import time
+import sys
 from typing import Optional, Dict, Any, Tuple
 
-DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
+if getattr(sys, "frozen", False):
+    DATA_DIR = os.path.join(os.path.dirname(sys.executable), "data")
+else:
+    DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 
 _UUID_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",

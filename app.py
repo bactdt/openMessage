@@ -1,4 +1,6 @@
 import os
+import platform
+import sys
 
 from flask import Flask, request, jsonify, render_template, abort
 from crypto_utils import (
@@ -10,7 +12,16 @@ from crypto_utils import (
 )
 import storage
 
-app = Flask(__name__)
+if getattr(sys, "frozen", False):
+    BASE_PATH = getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
+else:
+    BASE_PATH = os.path.dirname(os.path.abspath(__file__))
+
+app = Flask(
+    __name__,
+    template_folder=os.path.join(BASE_PATH, "templates"),
+    static_folder=os.path.join(BASE_PATH, "static"),
+)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", os.urandom(24).hex())
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
 
@@ -123,5 +134,56 @@ def view_message_api(msg_id):
     return jsonify({"content": plaintext})
 
 
+def _run_gunicorn_linux() -> None:
+    from gunicorn.app.base import BaseApplication
+
+    workers_raw = os.environ.get("WORKERS", "4")
+    try:
+        workers = int(workers_raw)
+    except ValueError:
+        workers = 4
+    workers = max(workers, 1)
+
+    host = os.environ.get("HOST", "0.0.0.0")
+    port = os.environ.get("PORT", "5000")
+    bind = os.environ.get("BIND", f"{host}:{port}")
+
+    class StandaloneApplication(BaseApplication):
+        def __init__(self, application, options=None):
+            self.options = options or {}
+            self.application = application
+            super().__init__()
+
+        def load_config(self):
+            config = {
+                key: value
+                for key, value in self.options.items()
+                if key in self.cfg.settings and value is not None
+            }
+            for key, value in config.items():
+                self.cfg.set(key.lower(), value)
+
+        def load(self):
+            return self.application
+
+    StandaloneApplication(app, {"bind": bind, "workers": workers}).run()
+
+
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    if getattr(sys, "frozen", False):
+        host = os.environ.get("HOST", "0.0.0.0")
+        port_raw = os.environ.get("PORT", "5000")
+        try:
+            port = int(port_raw)
+        except ValueError:
+            port = 5000
+
+        if platform.system() == "Linux":
+            try:
+                _run_gunicorn_linux()
+            except Exception:
+                app.run(host=host, port=port, debug=False)
+        else:
+            app.run(host=host, port=port, debug=False)
+    else:
+        app.run(debug=True, port=5000)
