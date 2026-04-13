@@ -1056,6 +1056,14 @@ select,
     overflow: visible;
 }
 
+[data-theme="dark"] .envelope-fold::before {
+    background: rgba(60, 60, 60, 0.8);
+}
+
+[data-theme="dark"] .envelope-flap-face {
+    background: rgba(60, 60, 60, 0.8);
+}
+
 /* ========================================
    Responsive
    ======================================== */
@@ -1075,5 +1083,13 @@ select,
 
     .app-footer {
         padding: 32px 0 24px;
+    }
+
+    .envelope-wrapper.open .letter {
+        transform: translateX(-50%) translateY(-150px);
+    }
+
+    .envelope {
+        height: 220px;
     }
 }

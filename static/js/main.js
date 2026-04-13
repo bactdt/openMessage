@@ -32,31 +32,51 @@ function renderMath(element) {
     }
 }
 
+function copyToClipboard(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+        return navigator.clipboard.writeText(text);
+    }
+    var textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    try {
+        document.execCommand('copy');
+        return Promise.resolve();
+    } catch (e) {
+        return Promise.reject(e);
+    } finally {
+        document.body.removeChild(textarea);
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     setupMarkdownCompiler();
 
-    const themeToggle = document.getElementById('theme-toggle');
+    var themeToggle = document.getElementById('theme-toggle');
     if (themeToggle) {
         themeToggle.addEventListener('click', () => {
-            const html = document.documentElement;
-            const current = html.getAttribute('data-theme');
-            const next = current === 'light' ? 'dark' : 'light';
+            var html = document.documentElement;
+            var current = html.getAttribute('data-theme');
+            var next = current === 'light' ? 'dark' : 'light';
             html.setAttribute('data-theme', next);
             localStorage.setItem('theme', next);
         });
     }
 
-    const createBtn = document.getElementById('btn-create');
+    var createBtn = document.getElementById('btn-create');
     if (createBtn) {
-        const togglePreviewBtn = document.getElementById('toggle-preview');
-        const contentInput = document.getElementById('secret-content');
-        const previewContainer = document.getElementById('preview-container');
+        var togglePreviewBtn = document.getElementById('toggle-preview');
+        var contentInput = document.getElementById('secret-content');
+        var previewContainer = document.getElementById('preview-container');
 
         if (togglePreviewBtn && contentInput && previewContainer) {
             togglePreviewBtn.addEventListener('click', () => {
-                const isHidden = previewContainer.classList.contains('preview-hidden');
+                var isHidden = previewContainer.classList.contains('preview-hidden');
                 if (isHidden) {
-                    const text = contentInput.value;
+                    var text = contentInput.value;
                     if (text.trim()) {
                         previewContainer.innerHTML = processContent(text);
                         renderMath(previewContainer);
@@ -75,10 +95,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         createBtn.addEventListener('click', async () => {
-            const content = document.getElementById('secret-content').value;
-            const password = document.getElementById('privacy-password').value;
-            const expiresIn = parseInt(document.getElementById('expiration-time').value);
-            const errorMsg = document.getElementById('error-message');
+            var content = document.getElementById('secret-content').value;
+            var password = document.getElementById('privacy-password').value;
+            var expiresIn = parseInt(document.getElementById('expiration-time').value);
+            var errorMsg = document.getElementById('error-message');
 
             if (!content.trim()) {
                 errorMsg.textContent = 'Please enter a secret message.';
@@ -88,12 +108,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
             errorMsg.classList.add('hidden');
 
-            const originalText = createBtn.innerHTML;
+            var originalText = createBtn.innerHTML;
             createBtn.innerHTML = '<div class="spinner" style="width:16px;height:16px;margin:0"></div>';
             createBtn.disabled = true;
 
             try {
-                const res = await fetch('/api/message', {
+                var res = await fetch('/api/message', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -103,7 +123,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     })
                 });
 
-                const data = await res.json();
+                var data = await res.json();
 
                 if (!res.ok) {
                     throw new Error(data.error || 'Failed to create secret');
@@ -112,8 +132,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('create-panel').classList.add('hidden');
                 document.getElementById('success-panel').classList.remove('hidden');
 
-                const baseUrl = window.location.origin;
-                const shareUrl = `${baseUrl}/v/${data.id}#${data.key}`;
+                var baseUrl = window.location.origin;
+                var shareUrl = baseUrl + '/v/' + data.id + '#' + data.key;
                 document.getElementById('share-url').value = shareUrl;
 
             } catch (err) {
@@ -125,14 +145,12 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        const copyBtn = document.getElementById('btn-copy');
+        var copyBtn = document.getElementById('btn-copy');
         if (copyBtn) {
             copyBtn.addEventListener('click', () => {
-                const urlInput = document.getElementById('share-url');
-                urlInput.select();
-                urlInput.setSelectionRange(0, 99999);
-                navigator.clipboard.writeText(urlInput.value).then(() => {
-                    const toast = document.getElementById('copy-toast');
+                var urlInput = document.getElementById('share-url');
+                copyToClipboard(urlInput.value).then(() => {
+                    var toast = document.getElementById('copy-toast');
                     toast.classList.remove('hidden');
                     setTimeout(() => {
                         toast.classList.add('hidden');
@@ -142,30 +160,62 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    const envWrapper = document.getElementById('envelope-wrapper');
-    let envelopeOpened = false;
+    var envWrapper = document.getElementById('envelope-wrapper');
+    var envelopeOpened = false;
+
+    function openEnvelope() {
+        if (envelopeOpened) return;
+        envelopeOpened = true;
+        envWrapper.classList.add('open');
+
+        setTimeout(function() {
+            var isProtected = document.getElementById('view-password') !== null;
+            if (!isProtected) {
+                var viewBtn = document.getElementById('btn-view');
+                if (viewBtn) viewBtn.click();
+            } else {
+                var pwInput = document.getElementById('view-password');
+                if (pwInput) pwInput.focus();
+            }
+        }, 700);
+    }
+
     if (envWrapper) {
         envWrapper.addEventListener('click', function(e) {
-            if (envelopeOpened) return;
             if (e.target.closest('#secret-letter')) return;
-            envelopeOpened = true;
-            this.classList.add('open');
+            openEnvelope();
+        });
+
+        envWrapper.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                openEnvelope();
+            }
         });
     }
 
-    const viewBtn = document.getElementById('btn-view');
+    var viewBtn = document.getElementById('btn-view');
     if (viewBtn) {
-        document.querySelectorAll('[data-time]').forEach(el => {
-            const ts = parseInt(el.getAttribute('data-time')) * 1000;
+        document.querySelectorAll('[data-time]').forEach(function(el) {
+            var ts = parseInt(el.getAttribute('data-time')) * 1000;
             el.textContent = new Date(ts).toLocaleString();
         });
 
+        var pwInput = document.getElementById('view-password');
+        if (pwInput) {
+            pwInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    viewBtn.click();
+                }
+            });
+        }
+
         viewBtn.addEventListener('click', () => {
-            const isProtected = viewBtn.getAttribute('data-has-password') === 'true';
-            const passwordInput = document.getElementById('view-password');
-            const errorMsg = document.getElementById('view-error');
-            const id = viewBtn.getAttribute('data-id');
-            const hashKeys = window.location.hash.substring(1);
+            var isProtected = viewBtn.getAttribute('data-has-password') === 'true';
+            var errorMsg = document.getElementById('view-error');
+            var id = viewBtn.getAttribute('data-id');
+            var hashKeys = window.location.hash.substring(1);
 
             if (!hashKeys) {
                 errorMsg.textContent = 'Decryption key missing from URL! Cannot decode message.';
@@ -173,22 +223,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            let password = null;
+            var password = null;
             if (isProtected) {
-                if (!passwordInput.value) {
+                if (!pwInput.value) {
                     errorMsg.textContent = 'This secret requires a password.';
                     errorMsg.classList.remove('hidden');
                     return;
                 }
-                password = passwordInput.value;
+                password = pwInput.value;
             }
 
             errorMsg.classList.add('hidden');
-            const originalText = viewBtn.innerHTML;
+            var originalText = viewBtn.innerHTML;
             viewBtn.innerHTML = '<div class="spinner" style="width:16px;height:16px;margin:0"></div>';
             viewBtn.disabled = true;
 
-            fetch(`/api/message/${id}`, {
+            fetch('/api/message/' + id, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -202,37 +252,42 @@ document.addEventListener('DOMContentLoaded', () => {
                     throw new Error(body.error || 'Failed to decrypt');
                 }
 
-                const panel = document.getElementById('confirm-panel');
+                var panel = document.getElementById('confirm-panel');
 
-                panel.innerHTML = `
-                    <div class="card">
-                        <div class="protected-header text-left" style="opacity:0;transform:translateY(10px);transition:opacity 0.4s ease,transform 0.4s ease;">
-                            <h2 style="font-size:22px;font-weight:700;letter-spacing:-0.25px;">Secure Message</h2>
-                            <span class="badge badge-danger">Destroyed on Server</span>
-                        </div>
+                panel.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+                panel.style.opacity = '0';
+                panel.style.transform = 'translateY(10px)';
 
-                        <div class="secret-content-box markdown-body text-left" id="decrypted-content" style="opacity:0;transform:translateY(15px);transition:opacity 0.5s ease 0.15s,transform 0.5s ease 0.15s;">
-                        </div>
+                setTimeout(function() {
+                    panel.innerHTML = '<div class="card">' +
+                        '<div class="protected-header text-left" style="opacity:0;transform:translateY(10px);transition:opacity 0.4s ease,transform 0.4s ease;">' +
+                            '<h2 style="font-size:22px;font-weight:700;letter-spacing:-0.25px;">Secure Message</h2>' +
+                            '<span class="badge badge-danger">Destroyed on Server</span>' +
+                        '</div>' +
+                        '<div class="secret-content-box markdown-body text-left" id="decrypted-content" style="opacity:0;transform:translateY(15px);transition:opacity 0.5s ease 0.15s,transform 0.5s ease 0.15s;">' +
+                        '</div>' +
+                        '<div class="mt-6" style="text-align:center;opacity:0;transition:opacity 0.4s ease 0.35s;">' +
+                            '<p class="help-text mb-4">This message is no longer available on the server. Do not refresh this page.</p>' +
+                            '<a href="/" class="btn btn-secondary">Create your own secret</a>' +
+                        '</div>' +
+                    '</div>';
 
-                        <div class="mt-6" style="text-align:center;opacity:0;transition:opacity 0.4s ease 0.35s;">
-                            <p class="help-text mb-4">This message is no longer available on the server. Do not refresh this page.</p>
-                            <a href="/" class="btn btn-secondary">Create your own secret</a>
-                        </div>
-                    </div>
-                `;
+                    var contentBox = document.getElementById('decrypted-content');
+                    contentBox.innerHTML = processContent(body.content);
+                    renderMath(contentBox);
 
-                const contentBox = document.getElementById('decrypted-content');
-                contentBox.innerHTML = processContent(body.content);
-                renderMath(contentBox);
+                    panel.style.opacity = '1';
+                    panel.style.transform = 'translateY(0)';
 
-                requestAnimationFrame(() => {
-                    requestAnimationFrame(() => {
-                        panel.querySelectorAll('[style*="opacity:0"]').forEach(el => {
-                            el.style.opacity = '1';
-                            el.style.transform = 'translateY(0)';
+                    requestAnimationFrame(function() {
+                        requestAnimationFrame(function() {
+                            panel.querySelectorAll('[style*="opacity:0"]').forEach(function(el) {
+                                el.style.opacity = '1';
+                                el.style.transform = 'translateY(0)';
+                            });
                         });
                     });
-                });
+                }, 300);
             })
             .catch(err => {
                 errorMsg.textContent = err.message;
