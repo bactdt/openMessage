@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 {% block content %}
 
-<div class="glass-panel" id="create-panel">
-    <div class="panel-header">
+<div class="card" id="create-panel">
+    <div class="card-header">
         <h2>Create a Secret Link</h2>
     </div>
-    
+
     <div class="form-group">
         <label for="secret-content">Secret content (Markdown & LaTeX supported)</label>
         <div class="editor-container">
@@ -14,23 +14,21 @@ Examples:
 **Bold text**, *Italics*, `code`
 
 Math formula: $$E = mc^2$$" rows="6" maxlength="100000"></textarea>
-            
-            <div id="preview-container" class="preview-hidden markdown-body">
-                <!-- Preview output goes here -->
-            </div>
+
+            <div id="preview-container" class="preview-hidden markdown-body"></div>
         </div>
         <div class="editor-actions">
             <button class="btn btn-ghost btn-sm" id="toggle-preview" type="button">Show Preview</button>
         </div>
     </div>
-    
+
     <div class="settings-grid">
         <div class="form-group">
             <label for="privacy-password">Password (Optional)</label>
             <input type="password" id="privacy-password" placeholder="Extra security layer">
             <span class="help-text">Viewer will need this to unlock it.</span>
         </div>
-        
+
         <div class="form-group">
             <label for="expiration-time">Expiration</label>
             <div class="select-wrapper">
@@ -39,38 +37,37 @@ Math formula: $$E = mc^2$$" rows="6" maxlength="100000"></textarea>
                     <option value="86400" selected>24 Hours</option>
                     <option value="604800">7 Days</option>
                 </select>
-                <svg class="select-icon" viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" class="css-i6dzq1"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                <svg class="select-icon" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
             </div>
             <span class="help-text">Will be deleted automatically if not viewed.</span>
         </div>
     </div>
-    
+
     <button class="btn btn-primary btn-block" id="btn-create" type="button">
         <span class="btn-text">Create Secret Link</span>
-        <svg class="icon" viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
     </button>
-    
+
     <div id="error-message" class="error-msg hidden"></div>
 </div>
 
-<!-- Success State Section -->
-<div class="glass-panel hidden" id="success-panel">
+<div class="card hidden" id="success-panel" style="text-align: center;">
     <div class="icon-circle success-icon">
-        <svg viewBox="0 0 24 24" width="32" height="32" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+        <svg viewBox="0 0 24 24" width="28" height="28" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
     </div>
-    <div class="panel-header text-center">
+    <div class="card-header" style="text-align: center;">
         <h2>Secret Link Created</h2>
         <p>Share this link with the recipient. It will self-destruct after being viewed once.</p>
     </div>
-    
+
     <div class="link-display">
         <input type="text" id="share-url" readonly>
-        <button class="btn btn-secondary" id="btn-copy">Copy</button>
+        <button class="btn btn-primary" id="btn-copy">Copy</button>
     </div>
-    
+
     <div id="copy-toast" class="toast hidden">Copied to clipboard!</div>
-    
-    <div class="action-row text-center mt-6">
+
+    <div class="mt-6">
         <a href="/" class="btn btn-ghost">Create another secret</a>
     </div>
 </div>

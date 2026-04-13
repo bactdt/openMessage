@@ -3,56 +3,51 @@
 
 <div id="confirm-panel">
     <div class="text-center mb-4">
-        <h2>You have a Secret Message!</h2>
-        <p class="subtitle mt-2">Click the envelope to open it.</p>
+        <h2 style="font-size: 26px; font-weight: 700; letter-spacing: -0.625px; line-height: 1.23; color: var(--color-text-primary);">You have a Secret Message!</h2>
+        <p class="subtitle" style="margin-top: 8px;">Click the envelope to open it.</p>
     </div>
-    
+
     <div class="envelope-scene">
         <div class="envelope-wrapper" id="envelope-wrapper">
             <div class="envelope">
                 <div class="envelope-inner"></div>
-                
-                <!-- Decorative address lines -->
+
                 <div class="envelope-lines">
                     <span></span>
                     <span></span>
                     <span></span>
                 </div>
-                
-                <!-- The letter paper inside (hidden until envelope opens) -->
+
                 <div class="letter" id="secret-letter">
-                    <div class="panel-header text-center" style="margin-bottom: 0.5rem;">
-                        <h3 style="font-size: 1.1rem; color: #9d0006; font-family: Georgia, serif;">⚠ Burn After Reading</h3>
+                    <div style="text-align: center; margin-bottom: 8px;">
+                        <span class="badge badge-danger">Burn After Reading</span>
                     </div>
-                    
-                    <div class="meta-info" style="margin: 0.5rem 0; padding: 0.5rem; font-size: 0.75rem;">
+
+                    <div class="meta-info" style="margin: 8px 0; padding: 8px; font-size: 12px;">
                         <p>Created: <span class="time-created" data-time="{{ msg.created_at }}"></span></p>
                         <p>Expires: <span class="time-expires" data-time="{{ msg.expires_at }}"></span></p>
                     </div>
-                    
+
                     {% if msg.has_password %}
                     <div class="form-group text-left mt-2">
-                        <label for="view-password" style="font-size: 0.75rem;">Password Required:</label>
-                        <input type="password" id="view-password" placeholder="Enter password" style="padding: 0.4rem; font-size: 0.8rem;">
+                        <label for="view-password" style="font-size: 12px; font-weight: 500;">Password Required:</label>
+                        <input type="password" id="view-password" placeholder="Enter password" style="padding: 6px 8px; font-size: 14px;">
                     </div>
                     {% endif %}
-                    
+
                     <button class="btn btn-primary btn-block mt-4" id="btn-view" data-id="{{ msg.id }}" data-has-password="{{ 'true' if msg.has_password else 'false' }}">
                         <span class="btn-text">View Secret</span>
                     </button>
-                    
-                    <div id="view-error" class="error-msg hidden" style="padding: 0.4rem; font-size: 0.75rem;"></div>
+
+                    <div id="view-error" class="error-msg hidden" style="padding: 6px; font-size: 12px; margin-top: 8px;"></div>
                 </div>
-                
-                <!-- Bottom fold (V shape) -->
+
                 <div class="envelope-fold"></div>
-                
-                <!-- Top flap (triangle) -->
+
                 <div class="envelope-flap">
                     <div class="envelope-flap-face"></div>
                 </div>
-                
-                <!-- Red wax seal -->
+
                 <div class="wax-seal">
                     <div class="wax-seal-circle">
                         <span class="wax-seal-text">S</span>

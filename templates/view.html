@@ -1,34 +1,33 @@
 {% extends "base.html" %}
 {% block content %}
 
-<div class="glass-panel" id="secret-panel">
+<div class="card" id="secret-panel">
     {% if error %}
     <div class="text-center">
         <div class="icon-circle error-icon">
-            <svg viewBox="0 0 24 24" width="32" height="32" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" class="css-i6dzq1"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+            <svg viewBox="0 0 24 24" width="28" height="28" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
         </div>
-        <h2>Secret Not Found</h2>
-        <p class="mt-4">{{ error }}</p>
-        <p class="subtitle mt-2">It may have expired or already been viewed by someone else.</p>
+        <h2 style="font-size: 22px; font-weight: 700; letter-spacing: -0.25px; color: var(--color-text-primary);">Secret Not Found</h2>
+        <p class="mt-4" style="color: var(--color-text-secondary); font-size: 16px;">{{ error }}</p>
+        <p class="mt-2" style="color: var(--color-text-muted); font-size: 14px;">It may have expired or already been viewed by someone else.</p>
         <div class="mt-6">
             <a href="/" class="btn btn-secondary">Create a new secret</a>
         </div>
     </div>
     {% else %}
-    <div class="panel-header protected-header">
-        <h2>Secure Message</h2>
+    <div class="protected-header">
+        <h2 style="font-size: 22px; font-weight: 700; letter-spacing: -0.25px;">Secure Message</h2>
         <span class="badge badge-danger">Destroyed on Server</span>
     </div>
-    
+
     <div class="secret-content-box markdown-body" id="decrypted-content">
-        <!-- JS will populate this with decrypted rendered Markdown/LaTeX -->
         <div class="loading-state">
             <div class="spinner"></div>
             <p>Decrypting message...</p>
         </div>
     </div>
-    
-    <div class="action-row text-center mt-6">
+
+    <div class="mt-6" style="text-align: center;">
         <p class="help-text mb-4">This message is no longer available on the server. Do not refresh this page.</p>
         <a href="/" class="btn btn-secondary">Create your own secret</a>
     </div>
