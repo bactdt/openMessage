@@ -16,6 +16,47 @@ _UUID_RE = re.compile(
     re.IGNORECASE,
 )
 
+CLEANUP_INTERVAL_SECONDS = 300
+_last_cleanup_at = 0
+_last_cleanup_cursor = 0
+
+
+def _take_message(file_path: str) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
+    held_path = f"{file_path}.lock-{uuid.uuid4().hex}"
+    try:
+        os.replace(file_path, held_path)
+    except FileNotFoundError:
+        return None, None
+    except OSError:
+        return None, None
+
+    try:
+        with open(held_path, "r") as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        _delete_held_message(held_path)
+        return held_path, None
+
+    return held_path, data
+
+
+def _delete_held_message(held_path: str) -> None:
+    try:
+        os.remove(held_path)
+    except OSError:
+        pass
+
+
+def _restore_held_message(held_path: str, file_path: str) -> None:
+    try:
+        os.replace(held_path, file_path)
+        try:
+            os.chmod(file_path, 0o600)
+        except OSError:
+            pass
+    except OSError:
+        _delete_held_message(held_path)
+
 
 def validate_msg_id(msg_id: str) -> bool:
     return isinstance(msg_id, str) and bool(_UUID_RE.match(msg_id))
@@ -23,7 +64,12 @@ def validate_msg_id(msg_id: str) -> bool:
 
 def ensure_data_dir():
     if not os.path.exists(DATA_DIR):
-        os.makedirs(DATA_DIR)
+        os.makedirs(DATA_DIR, mode=0o700, exist_ok=True)
+    else:
+        try:
+            os.chmod(DATA_DIR, 0o700)
+        except OSError:
+            pass
 
 
 def save_message(
@@ -45,6 +91,11 @@ def save_message(
     file_path = os.path.join(DATA_DIR, f"{msg_id}.json")
     with open(file_path, "w") as f:
         json.dump(data, f)
+
+    try:
+        os.chmod(file_path, 0o600)
+    except OSError:
+        pass
 
     return msg_id
 
@@ -77,7 +128,10 @@ def get_message_metadata(msg_id: str) -> Optional[Dict[str, Any]]:
 
     # Check expiration
     if int(time.time()) > data.get("expires_at", 0):
-        os.remove(file_path)  # cleanup
+        try:
+            os.remove(file_path)
+        except OSError:
+            pass
         return None
 
     # Return safe metadata
@@ -96,27 +150,19 @@ def pop_message(msg_id: str) -> Optional[Dict[str, Any]]:
     if file_path is None:
         return None
 
-    if not os.path.exists(file_path):
+    held_path, data = _take_message(file_path)
+    if held_path is None:
         return None
-
-    with open(file_path, "r") as f:
-        try:
-            data = json.load(f)
-        except json.JSONDecodeError:
-            data = None
-
-    # Always delete when popped, right after reading! One-Time viewing!
-    try:
-        os.remove(file_path)
-    except OSError:
-        pass
 
     if not data:
         return None
 
     # Still check expiration before returning
     if int(time.time()) > data.get("expires_at", 0):
+        _delete_held_message(held_path)
         return None
+
+    _delete_held_message(held_path)
 
     return data
 
@@ -135,33 +181,27 @@ def verify_and_pop(
     if file_path is None:
         return None, "invalid_id"
 
-    if not os.path.exists(file_path):
+    held_path, data = _take_message(file_path)
+    if held_path is None:
         return None, "not_found"
 
-    try:
-        with open(file_path, "r") as f:
-            data = json.load(f)
-    except (json.JSONDecodeError, OSError):
+    if data is None:
         return None, "not_found"
 
     if int(time.time()) > data.get("expires_at", 0):
-        try:
-            os.remove(file_path)
-        except OSError:
-            pass
+        _delete_held_message(held_path)
         return None, "expired"
 
     if data.get("has_password"):
         if password_verify_fn is None:
+            _restore_held_message(held_path, file_path)
             return None, "password_required"
         verified = password_verify_fn(data.get("password_hash"))
         if not verified:
+            _restore_held_message(held_path, file_path)
             return None, "wrong_password"
 
-    try:
-        os.remove(file_path)
-    except OSError:
-        pass
+    _delete_held_message(held_path)
 
     return data, None
 
@@ -170,7 +210,16 @@ def cleanup_expired():
     """Iterate and remove expired files. Can be run periodically."""
     ensure_data_dir()
     now = int(time.time())
-    for filename in os.listdir(DATA_DIR):
+    global _last_cleanup_cursor
+    files = [name for name in os.listdir(DATA_DIR) if name.endswith(".json")]
+    if not files:
+        return
+
+    batch_size = 200
+    start = _last_cleanup_cursor % len(files)
+    ordered = files[start:] + files[:start]
+
+    for filename in ordered[:batch_size]:
         if not filename.endswith(".json"):
             continue
 
@@ -184,5 +233,17 @@ def cleanup_expired():
             # If it's corrupted, just delete it
             try:
                 os.remove(file_path)
-            except:
+            except OSError:
                 pass
+
+    _last_cleanup_cursor = start + batch_size
+
+
+def maybe_cleanup_expired() -> None:
+    global _last_cleanup_at
+    now = int(time.time())
+    if now - _last_cleanup_at < CLEANUP_INTERVAL_SECONDS:
+        return
+
+    cleanup_expired()
+    _last_cleanup_at = now

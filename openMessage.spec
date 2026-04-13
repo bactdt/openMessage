@@ -5,7 +5,9 @@ from PyInstaller.utils.hooks import collect_submodules
 hiddenimports = []
 hiddenimports += collect_submodules("cryptography")
 hiddenimports += collect_submodules("flask")
+hiddenimports += collect_submodules("flask_limiter")
 hiddenimports += collect_submodules("gunicorn")
+hiddenimports += collect_submodules("limits")
 hiddenimports += collect_submodules("werkzeug")
 
 datas = [

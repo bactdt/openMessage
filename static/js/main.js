@@ -1,8 +1,6 @@
 function setupMarkdownCompiler() {
     if (!window.marked || !window.renderMathInElement) return;
-    const renderer = new marked.Renderer();
     marked.setOptions({
-        renderer: renderer,
         gfm: true,
         breaks: true
     });
@@ -12,8 +10,11 @@ function processContent(text) {
     if (!window.marked || !window.DOMPurify) return text;
     let html = marked.parse(text);
     html = DOMPurify.sanitize(html, {
+        USE_PROFILES: { html: true },
         ADD_TAGS: ['math', 'mrow', 'mi', 'mn', 'mo', 'ms', 'mspace', 'mtext', 'menclose', 'merror', 'mfrac', 'mpadded', 'mphantom', 'mroot', 'mrow', 'msqrt', 'mstyle', 'mmultiscripts', 'mover', 'mprescripts', 'msub', 'msubsup', 'msup', 'munder', 'munderover', 'none', 'semantics', 'annotation', 'annotation-xml'],
-        ADD_ATTR: ['mathvariant', 'mathsize', 'mathcolor', 'mathbackground', 'dir', 'display', 'op', 'center', 'align', 'rowalign', 'columnalign', 'groupalign', 'alignmentscope', 'columnwidth', 'width', 'depth', 'lspace', 'rspace', 'stretchy', 'symmetric', 'maxsize', 'minsize', 'largeop', 'movablelimits', 'accent', 'form', 'separator', 'fence', 'lquote', 'rquote', 'linebreak', 'style', 'href', 'class', 'id']
+        ADD_ATTR: ['mathvariant', 'mathsize', 'mathcolor', 'mathbackground', 'dir', 'display', 'op', 'center', 'align', 'rowalign', 'columnalign', 'groupalign', 'alignmentscope', 'columnwidth', 'width', 'depth', 'lspace', 'rspace', 'stretchy', 'symmetric', 'maxsize', 'minsize', 'largeop', 'movablelimits', 'accent', 'form', 'separator', 'fence', 'lquote', 'rquote', 'linebreak', 'class'],
+        FORBID_TAGS: ['style', 'script', 'iframe', 'object', 'embed'],
+        FORBID_ATTR: ['style', 'onerror', 'onclick', 'onload', 'id']
     });
     return html;
 }

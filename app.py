@@ -2,7 +2,10 @@ import os
 import platform
 import sys
 
-from flask import Flask, request, jsonify, render_template, abort
+from flask import Flask, request, jsonify, render_template
+from flask_limiter import Limiter
+from flask_limiter.errors import RateLimitExceeded
+from flask_limiter.util import get_remote_address
 from crypto_utils import (
     generate_key,
     encrypt_message,
@@ -22,6 +25,23 @@ app = Flask(
     template_folder=os.path.join(BASE_PATH, "templates"),
     static_folder=os.path.join(BASE_PATH, "static"),
 )
+
+RATE_LIMIT_STORAGE_URI = os.environ.get("RATE_LIMIT_STORAGE_URI", "memory://")
+
+limiter = Limiter(
+    key_func=get_remote_address,
+    app=app,
+    default_limits=[],
+    storage_uri=RATE_LIMIT_STORAGE_URI,
+)
+
+
+def _message_attempt_key() -> str:
+    view_args = request.view_args or {}
+    msg_id = view_args.get("msg_id", "")
+    return f"{get_remote_address()}:{msg_id}"
+
+
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", os.urandom(24).hex())
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
 
@@ -32,15 +52,35 @@ ALLOWED_EXPIRES = {3600, 86400, 604800}
 def set_security_headers(response):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
+        "base-uri 'none'; "
+        "object-src 'none'; "
+        "frame-ancestors 'none'; "
+        "form-action 'self'; "
+        "script-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; "
         "font-src 'self' https://fonts.gstatic.com; "
         "img-src 'self' data:; "
         "connect-src 'self'"
     )
+
+    if request.path.startswith("/api/") or request.path.startswith("/v/"):
+        response.headers["Cache-Control"] = "no-store, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+
     return response
+
+
+@app.errorhandler(RateLimitExceeded)
+def handle_rate_limit(_error):
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "Too many requests. Please try again later."}), 429
+    return render_template(
+        "view.html", error="Too many requests. Please wait and try again."
+    ), 429
 
 
 @app.route("/")
@@ -49,16 +89,22 @@ def index():
 
 
 @app.route("/api/message", methods=["POST"])
+@limiter.limit("20 per minute")
 def create_message():
-    data = request.json
+    data = request.get_json(silent=True)
     if not data or "content" not in data:
         return jsonify({"error": "Missing content"}), 400
 
     content = data["content"]
+    if not isinstance(content, str):
+        return jsonify({"error": "Invalid content format"}), 400
     if len(content) > 100000:
         return jsonify({"error": "Message too long. Maximum 100,000 characters."}), 400
 
     password = data.get("password")
+    if password is not None and (not isinstance(password, str) or len(password) > 1024):
+        return jsonify({"error": "Invalid password format"}), 400
+
     expires_in = data.get("expires_in", 3600 * 24)
     if expires_in not in ALLOWED_EXPIRES:
         return jsonify({"error": "Invalid expiration time"}), 400
@@ -76,12 +122,14 @@ def create_message():
 
     msg_id = storage.save_message(ciphertext, expires_in, password_hash=pwhash)
 
-    storage.cleanup_expired()
+    storage.maybe_cleanup_expired()
 
     return jsonify({"id": msg_id, "key": key})
 
 
 @app.route("/v/<msg_id>")
+@limiter.limit("120 per minute")
+@limiter.limit("20 per minute", key_func=_message_attempt_key)
 def view_confirm(msg_id):
     if not storage.validate_msg_id(msg_id):
         return render_template(
@@ -98,13 +146,21 @@ def view_confirm(msg_id):
 
 
 @app.route("/api/message/<msg_id>", methods=["POST"])
+@limiter.limit("120 per minute")
+@limiter.limit("8 per minute", key_func=_message_attempt_key)
 def view_message_api(msg_id):
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     key = data.get("key")
     password = data.get("password")
 
     if not key:
         return jsonify({"error": "Decryption key missing"}), 400
+
+    if not isinstance(key, str) or len(key) > 256:
+        return jsonify({"error": "Invalid decryption key format"}), 400
+
+    if password is not None and (not isinstance(password, str) or len(password) > 1024):
+        return jsonify({"error": "Invalid password format"}), 400
 
     if not storage.validate_msg_id(msg_id):
         return jsonify({"error": "Secret not found or already read"}), 404
