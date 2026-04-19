@@ -58,6 +58,15 @@ def _restore_held_message(held_path: str, file_path: str) -> None:
         _delete_held_message(held_path)
 
 
+PROTOCOL_VERSION = "v1"
+
+
+def _ensure_version(data: dict) -> dict:
+    if "version" not in data:
+        data["version"] = PROTOCOL_VERSION
+    return data
+
+
 def validate_msg_id(msg_id: str) -> bool:
     return isinstance(msg_id, str) and bool(_UUID_RE.match(msg_id))
 
@@ -80,6 +89,7 @@ def save_message(
     now = int(time.time())
 
     data = {
+        "version": "v1",
         "id": msg_id,
         "ciphertext": ciphertext,
         "created_at": now,
@@ -126,6 +136,8 @@ def get_message_metadata(msg_id: str) -> Optional[Dict[str, Any]]:
         except json.JSONDecodeError:
             return None
 
+    data = _ensure_version(data)
+
     # Check expiration
     if int(time.time()) > data.get("expires_at", 0):
         try:
@@ -157,6 +169,8 @@ def pop_message(msg_id: str) -> Optional[Dict[str, Any]]:
     if not data:
         return None
 
+    data = _ensure_version(data)
+
     # Still check expiration before returning
     if int(time.time()) > data.get("expires_at", 0):
         _delete_held_message(held_path)
@@ -187,6 +201,8 @@ def verify_and_pop(
 
     if data is None:
         return None, "not_found"
+
+    data = _ensure_version(data)
 
     if int(time.time()) > data.get("expires_at", 0):
         _delete_held_message(held_path)
