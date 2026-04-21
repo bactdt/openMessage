@@ -59,12 +59,17 @@ def _restore_held_message(held_path: str, file_path: str) -> None:
 
 
 PROTOCOL_VERSION = "v1"
+SUPPORTED_VERSIONS = {"v1"}
 
 
 def _ensure_version(data: dict) -> dict:
     if "version" not in data:
         data["version"] = PROTOCOL_VERSION
     return data
+
+
+def _validate_version(data: dict) -> bool:
+    return data.get("version") in SUPPORTED_VERSIONS
 
 
 def validate_msg_id(msg_id: str) -> bool:
@@ -89,7 +94,7 @@ def save_message(
     now = int(time.time())
 
     data = {
-        "version": "v1",
+        "version": PROTOCOL_VERSION,
         "id": msg_id,
         "ciphertext": ciphertext,
         "created_at": now,
@@ -138,6 +143,9 @@ def get_message_metadata(msg_id: str) -> Optional[Dict[str, Any]]:
 
     data = _ensure_version(data)
 
+    if not _validate_version(data):
+        return None
+
     # Check expiration
     if int(time.time()) > data.get("expires_at", 0):
         try:
@@ -171,6 +179,10 @@ def pop_message(msg_id: str) -> Optional[Dict[str, Any]]:
 
     data = _ensure_version(data)
 
+    if not _validate_version(data):
+        _delete_held_message(held_path)
+        return None
+
     # Still check expiration before returning
     if int(time.time()) > data.get("expires_at", 0):
         _delete_held_message(held_path)
@@ -203,6 +215,10 @@ def verify_and_pop(
         return None, "not_found"
 
     data = _ensure_version(data)
+
+    if not _validate_version(data):
+        _delete_held_message(held_path)
+        return None, "unsupported_version"
 
     if int(time.time()) > data.get("expires_at", 0):
         _delete_held_message(held_path)

@@ -173,7 +173,12 @@ def view_message_api(msg_id):
         verify_fn = lambda pw_hash: verify_password(password, pw_hash)
 
     msg_data, error = storage.verify_and_pop(msg_id, verify_fn)
-    if error == "invalid_id" or error == "not_found" or error == "expired":
+    if (
+        error == "invalid_id"
+        or error == "not_found"
+        or error == "expired"
+        or error == "unsupported_version"
+    ):
         return jsonify({"error": "Secret not found or already read"}), 404
     if error == "password_required":
         return jsonify({"error": "Password required", "needs_password": True}), 401

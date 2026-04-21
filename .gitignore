@@ -9,3 +9,4 @@ env/
 data/*.json
 !data/.gitkeep
 .DS_Store
+PLAN.md
