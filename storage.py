@@ -1,3 +1,4 @@
+import logging
 import os
 import json
 import re
@@ -5,6 +6,8 @@ import uuid
 import time
 import sys
 from typing import Optional, Dict, Any, Tuple
+
+logger = logging.getLogger(__name__)
 
 if getattr(sys, "frozen", False):
     DATA_DIR = os.path.join(os.path.dirname(sys.executable), "data")

@@ -1,3 +1,4 @@
+import logging
 import os
 import platform
 import sys
@@ -46,6 +47,27 @@ app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", os.urandom(24).hex())
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
 
 ALLOWED_EXPIRES = {3600, 86400, 604800}
+
+
+def _init_logging() -> None:
+    formatter = logging.Formatter(
+        fmt="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+    if not root.handlers:
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(formatter)
+        root.addHandler(handler)
+    else:
+        for h in root.handlers:
+            if h.formatter is None:
+                h.setFormatter(formatter)
+
+
+_init_logging()
+logger = logging.getLogger(__name__)
 
 
 @app.after_request
@@ -114,6 +136,7 @@ def create_message():
     try:
         ciphertext = encrypt_message(content, key)
     except Exception:
+        logger.exception("Message encryption failed")
         return jsonify({"error": "Encryption failed"}), 500
 
     pwhash = None
