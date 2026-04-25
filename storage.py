@@ -47,7 +47,7 @@ def _delete_held_message(held_path: str) -> None:
     try:
         os.remove(held_path)
     except OSError:
-        pass
+        logger.warning("Failed to delete held message file: %s", held_path)
 
 
 def _restore_held_message(held_path: str, file_path: str) -> None:
@@ -56,8 +56,9 @@ def _restore_held_message(held_path: str, file_path: str) -> None:
         try:
             os.chmod(file_path, 0o600)
         except OSError:
-            pass
+            logger.warning("Failed to chmod restored message file: %s", file_path)
     except OSError:
+        logger.error("Failed to restore held message file: %s -> %s", held_path, file_path)
         _delete_held_message(held_path)
 
 
@@ -86,7 +87,7 @@ def ensure_data_dir():
         try:
             os.chmod(DATA_DIR, 0o700)
         except OSError:
-            pass
+            logger.warning("Failed to chmod data directory: %s", DATA_DIR)
 
 
 def save_message(
@@ -113,7 +114,7 @@ def save_message(
     try:
         os.chmod(file_path, 0o600)
     except OSError:
-        pass
+        logger.warning("Failed to chmod message file: %s", file_path)
 
     return msg_id
 
@@ -154,7 +155,7 @@ def get_message_metadata(msg_id: str) -> Optional[Dict[str, Any]]:
         try:
             os.remove(file_path)
         except OSError:
-            pass
+            logger.warning("Failed to remove expired message file: %s", file_path)
         return None
 
     # Return safe metadata
@@ -269,7 +270,7 @@ def cleanup_expired():
             try:
                 os.remove(file_path)
             except OSError:
-                pass
+                logger.warning("Failed to remove corrupted message file: %s", file_path)
 
     _last_cleanup_cursor = start + batch_size
 

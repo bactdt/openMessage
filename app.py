@@ -213,6 +213,7 @@ def view_message_api(msg_id):
     try:
         plaintext = decrypt_message(msg_data["ciphertext"], key)
     except Exception:
+        logger.exception("Message decryption failed")
         return jsonify({"error": "Decryption failed (invalid key)"}), 400
 
     return jsonify({"content": plaintext})
