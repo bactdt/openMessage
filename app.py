@@ -2,8 +2,9 @@ import logging
 import os
 import platform
 import sys
+import uuid
 
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, g, request, jsonify, render_template
 from flask_limiter import Limiter
 from flask_limiter.errors import RateLimitExceeded
 from flask_limiter.util import get_remote_address
@@ -49,25 +50,39 @@ app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
 ALLOWED_EXPIRES = {3600, 86400, 604800}
 
 
+class RequestIDFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.request_id = getattr(g, "request_id", "-")
+        return True
+
+
 def _init_logging() -> None:
     formatter = logging.Formatter(
-        fmt="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        fmt="%(asctime)s [%(levelname)s] [%(request_id)s] %(name)s: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
     root = logging.getLogger()
     root.setLevel(logging.INFO)
+    request_id_filter = RequestIDFilter()
     if not root.handlers:
         handler = logging.StreamHandler(sys.stdout)
         handler.setFormatter(formatter)
+        handler.addFilter(request_id_filter)
         root.addHandler(handler)
     else:
         for h in root.handlers:
             if h.formatter is None:
                 h.setFormatter(formatter)
+            h.addFilter(request_id_filter)
 
 
 _init_logging()
 logger = logging.getLogger(__name__)
+
+
+@app.before_request
+def set_request_id():
+    g.request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex
 
 
 @app.after_request

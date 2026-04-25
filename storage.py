@@ -251,6 +251,10 @@ def cleanup_expired():
     if not files:
         return
 
+    scanned = 0
+    deleted = 0
+    failed = 0
+
     batch_size = 200
     start = _last_cleanup_cursor % len(files)
     ordered = files[start:] + files[:start]
@@ -259,20 +263,29 @@ def cleanup_expired():
         if not filename.endswith(".json"):
             continue
 
+        scanned += 1
         file_path = os.path.join(DATA_DIR, filename)
         try:
             with open(file_path, "r") as f:
                 data = json.load(f)
             if now > data.get("expires_at", 0):
                 os.remove(file_path)
+                deleted += 1
         except Exception:
             # If it's corrupted, just delete it
             try:
                 os.remove(file_path)
+                deleted += 1
             except OSError:
                 logger.warning("Failed to remove corrupted message file: %s", file_path)
+                failed += 1
 
     _last_cleanup_cursor = start + batch_size
+
+    logger.info(
+        "cleanup_expired: scanned=%d deleted=%d failed=%d",
+        scanned, deleted, failed,
+    )
 
 
 def maybe_cleanup_expired() -> None:
