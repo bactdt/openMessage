@@ -212,15 +212,15 @@ def view_message_api(msg_id):
 
     msg_data, error = storage.verify_and_pop(msg_id, verify_fn)
     if (
-        error == "invalid_id"
-        or error == "not_found"
-        or error == "expired"
-        or error == "unsupported_version"
+        error == storage.ERROR_INVALID_ID
+        or error == storage.ERROR_NOT_FOUND
+        or error == storage.ERROR_EXPIRED
+        or error == storage.ERROR_UNSUPPORTED_VERSION
     ):
         return jsonify({"error": "Secret not found or already read"}), 404
-    if error == "password_required":
+    if error == storage.ERROR_PASSWORD_REQUIRED:
         return jsonify({"error": "Password required", "needs_password": True}), 401
-    if error == "wrong_password":
+    if error == storage.ERROR_WRONG_PASSWORD:
         return jsonify({"error": "Incorrect password"}), 401
     if error or msg_data is None:
         return jsonify({"error": "Secret not found or already read"}), 404

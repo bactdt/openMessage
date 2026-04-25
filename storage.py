@@ -65,6 +65,20 @@ def _restore_held_message(held_path: str, file_path: str) -> None:
 PROTOCOL_VERSION = "v1"
 SUPPORTED_VERSIONS = {"v1"}
 
+ERROR_INVALID_ID = "invalid_id"
+ERROR_NOT_FOUND = "not_found"
+ERROR_UNSUPPORTED_VERSION = "unsupported_version"
+ERROR_EXPIRED = "expired"
+ERROR_PASSWORD_REQUIRED = "password_required"
+ERROR_WRONG_PASSWORD = "wrong_password"
+ERROR_LOCKED = "locked"
+
+RETRYABLE_ERRORS = {ERROR_LOCKED}
+
+
+def is_retryable_error(error: Optional[str]) -> bool:
+    return error in RETRYABLE_ERRORS
+
 
 def _ensure_version(data: dict) -> dict:
     if "version" not in data:
@@ -209,33 +223,33 @@ def verify_and_pop(
     ensure_data_dir()
     file_path = _resolve_path(msg_id)
     if file_path is None:
-        return None, "invalid_id"
+        return None, ERROR_INVALID_ID
 
     held_path, data = _take_message(file_path)
     if held_path is None:
-        return None, "not_found"
+        return None, ERROR_NOT_FOUND
 
     if data is None:
-        return None, "not_found"
+        return None, ERROR_NOT_FOUND
 
     data = _ensure_version(data)
 
     if not _validate_version(data):
         _delete_held_message(held_path)
-        return None, "unsupported_version"
+        return None, ERROR_UNSUPPORTED_VERSION
 
     if int(time.time()) > data.get("expires_at", 0):
         _delete_held_message(held_path)
-        return None, "expired"
+        return None, ERROR_EXPIRED
 
     if data.get("has_password"):
         if password_verify_fn is None:
             _restore_held_message(held_path, file_path)
-            return None, "password_required"
+            return None, ERROR_PASSWORD_REQUIRED
         verified = password_verify_fn(data.get("password_hash"))
         if not verified:
             _restore_held_message(held_path, file_path)
-            return None, "wrong_password"
+            return None, ERROR_WRONG_PASSWORD
 
     _delete_held_message(held_path)
 

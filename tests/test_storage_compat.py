@@ -179,5 +179,106 @@ class TestStorageVersionCompat(unittest.TestCase):
         self.assertEqual(data["version"], "v1")
 
 
+class TestStorageErrorCodes(unittest.TestCase):
+    def test_error_code_values_match_existing_returns(self):
+        self.assertEqual(storage.ERROR_INVALID_ID, "invalid_id")
+        self.assertEqual(storage.ERROR_NOT_FOUND, "not_found")
+        self.assertEqual(storage.ERROR_UNSUPPORTED_VERSION, "unsupported_version")
+        self.assertEqual(storage.ERROR_EXPIRED, "expired")
+        self.assertEqual(storage.ERROR_PASSWORD_REQUIRED, "password_required")
+        self.assertEqual(storage.ERROR_WRONG_PASSWORD, "wrong_password")
+        self.assertEqual(storage.ERROR_LOCKED, "locked")
+
+    def test_retryable_errors_contains_only_locked(self):
+        self.assertEqual(storage.RETRYABLE_ERRORS, {storage.ERROR_LOCKED})
+
+    def test_is_retryable_error_with_locked_is_true(self):
+        self.assertTrue(storage.is_retryable_error(storage.ERROR_LOCKED))
+
+    def test_is_retryable_error_with_non_retryable_is_false(self):
+        for err in [
+            storage.ERROR_INVALID_ID,
+            storage.ERROR_NOT_FOUND,
+            storage.ERROR_EXPIRED,
+            storage.ERROR_UNSUPPORTED_VERSION,
+            storage.ERROR_PASSWORD_REQUIRED,
+            storage.ERROR_WRONG_PASSWORD,
+        ]:
+            self.assertFalse(
+                storage.is_retryable_error(err),
+                f"{err} must not be retryable",
+            )
+
+    def test_is_retryable_error_with_none_is_false(self):
+        self.assertFalse(storage.is_retryable_error(None))
+
+
+class TestVerifyAndPopReturnsErrorCodes(unittest.TestCase):
+    def setUp(self):
+        self.tmp_dir = tempfile.mkdtemp()
+        self.patcher = patch.object(storage, "DATA_DIR", self.tmp_dir)
+        self.patcher.start()
+        self.addCleanup(self.patcher.stop)
+
+    def tearDown(self):
+        for f in os.listdir(self.tmp_dir):
+            os.remove(os.path.join(self.tmp_dir, f))
+        os.rmdir(self.tmp_dir)
+
+    def test_verify_and_pop_invalid_id_returns_const(self):
+        _, error = storage.verify_and_pop("not-a-uuid")
+        self.assertEqual(error, storage.ERROR_INVALID_ID)
+
+    def test_verify_and_pop_not_found_returns_const(self):
+        msg_id = str(storage.uuid.uuid4())
+        _, error = storage.verify_and_pop(msg_id)
+        self.assertEqual(error, storage.ERROR_NOT_FOUND)
+
+    def test_verify_and_pop_password_required_returns_const(self):
+        msg_id = str(storage.uuid.uuid4())
+        now = int(time.time())
+        pwhash = crypto_utils.hash_password("secret")
+        path = os.path.join(self.tmp_dir, f"{msg_id}.json")
+        data = {
+            "id": msg_id,
+            "ciphertext": "AAA",
+            "created_at": now,
+            "expires_at": now + 3600,
+            "has_password": True,
+            "password_hash": pwhash,
+        }
+        with open(path, "w") as f:
+            json.dump(data, f)
+        os.chmod(path, 0o600)
+
+        _, error = storage.verify_and_pop(msg_id)
+        self.assertEqual(error, storage.ERROR_PASSWORD_REQUIRED)
+
+    def test_verify_and_pop_wrong_password_returns_const(self):
+        msg_id = str(storage.uuid.uuid4())
+        now = int(time.time())
+        pwhash = crypto_utils.hash_password("secret")
+        path = os.path.join(self.tmp_dir, f"{msg_id}.json")
+        data = {
+            "id": msg_id,
+            "ciphertext": "AAA",
+            "created_at": now,
+            "expires_at": now + 3600,
+            "has_password": True,
+            "password_hash": pwhash,
+        }
+        with open(path, "w") as f:
+            json.dump(data, f)
+        os.chmod(path, 0o600)
+
+        _, error = storage.verify_and_pop(
+            msg_id,
+            password_verify_fn=lambda pw_hash: crypto_utils.verify_password(
+                "wrong", pw_hash
+            ),
+        )
+        self.assertEqual(error, storage.ERROR_WRONG_PASSWORD)
+
+
 if __name__ == "__main__":
     unittest.main()
