@@ -1,5 +1,6 @@
 import json
 import os
+import threading
 import time
 import tempfile
 import unittest
@@ -303,6 +304,80 @@ class TestVerifyAndPopReturnsErrorCodes(unittest.TestCase):
             ),
         )
         self.assertEqual(error, storage.ERROR_WRONG_PASSWORD)
+
+
+class TestVerifyAndPopConcurrentAccess(unittest.TestCase):
+    def setUp(self):
+        self.tmp_dir = tempfile.mkdtemp()
+        self.patcher = patch.object(storage, "DATA_DIR", self.tmp_dir)
+        self.patcher.start()
+        self.addCleanup(self.patcher.stop)
+
+    def tearDown(self):
+        for f in os.listdir(self.tmp_dir):
+            os.remove(os.path.join(self.tmp_dir, f))
+        os.rmdir(self.tmp_dir)
+
+    def _write_password_message(self):
+        msg_id = str(storage.uuid.uuid4())
+        now = int(time.time())
+        path = os.path.join(self.tmp_dir, f"{msg_id}.json")
+        data = {
+            "id": msg_id,
+            "ciphertext": "AAA",
+            "created_at": now,
+            "expires_at": now + 3600,
+            "has_password": True,
+            "password_hash": crypto_utils.hash_password("secret"),
+        }
+        with open(path, "w") as f:
+            json.dump(data, f)
+        os.chmod(path, 0o600)
+        return msg_id
+
+    def test_concurrent_read_during_wrong_password_restore_returns_locked(self):
+        msg_id = self._write_password_message()
+        lock_acquired = threading.Event()
+        release_wrong_password = threading.Event()
+        wrong_password_result = {}
+
+        def blocked_wrong_password(_pw_hash):
+            lock_acquired.set()
+            self.assertTrue(release_wrong_password.wait(timeout=1))
+            return False
+
+        def run_wrong_password_attempt():
+            wrong_password_result["result"] = storage.verify_and_pop(
+                msg_id,
+                password_verify_fn=blocked_wrong_password,
+            )
+
+        thread = threading.Thread(target=run_wrong_password_attempt)
+        thread.start()
+        self.addCleanup(thread.join, 1)
+
+        self.assertTrue(lock_acquired.wait(timeout=1))
+        _, concurrent_error = storage.verify_and_pop(msg_id)
+
+        release_wrong_password.set()
+        thread.join(timeout=1)
+
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(concurrent_error, storage.ERROR_LOCKED)
+        self.assertEqual(
+            wrong_password_result["result"],
+            (None, storage.ERROR_WRONG_PASSWORD),
+        )
+
+        data, error = storage.verify_and_pop(
+            msg_id,
+            password_verify_fn=lambda pw_hash: crypto_utils.verify_password(
+                "secret", pw_hash
+            ),
+        )
+        self.assertIsNone(error)
+        self.assertIsNotNone(data)
+        self.assertEqual(data["id"], msg_id)
 
 
 if __name__ == "__main__":
