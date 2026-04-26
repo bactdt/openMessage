@@ -20,6 +20,8 @@ _UUID_RE = re.compile(
 )
 
 CLEANUP_INTERVAL_SECONDS = 300
+LOCK_DETECTION_WINDOW_SECONDS = 0.05
+LOCK_DETECTION_POLL_INTERVAL_SECONDS = 0.005
 _last_cleanup_at = 0
 _last_cleanup_cursor = 0
 
@@ -60,6 +62,28 @@ def _restore_held_message(held_path: str, file_path: str) -> None:
     except OSError:
         logger.error("Failed to restore held message file: %s -> %s", held_path, file_path)
         _delete_held_message(held_path)
+
+
+def _has_held_message_lock(file_path: str) -> bool:
+    lock_prefix = f"{os.path.basename(file_path)}.lock-"
+    try:
+        return any(
+            name.startswith(lock_prefix)
+            for name in os.listdir(os.path.dirname(file_path))
+        )
+    except OSError:
+        logger.warning("Failed to inspect message lock state: %s", file_path)
+        return False
+
+
+def _detect_transient_lock(file_path: str) -> bool:
+    deadline = time.monotonic() + LOCK_DETECTION_WINDOW_SECONDS
+    while True:
+        if _has_held_message_lock(file_path) or os.path.exists(file_path):
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(LOCK_DETECTION_POLL_INTERVAL_SECONDS)
 
 
 PROTOCOL_VERSION = "v1"
@@ -227,6 +251,8 @@ def verify_and_pop(
 
     held_path, data = _take_message(file_path)
     if held_path is None:
+        if _detect_transient_lock(file_path):
+            return None, ERROR_LOCKED
         return None, ERROR_NOT_FOUND
 
     if data is None:

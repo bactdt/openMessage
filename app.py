@@ -222,6 +222,8 @@ def view_message_api(msg_id):
         return jsonify({"error": "Password required", "needs_password": True}), 401
     if error == storage.ERROR_WRONG_PASSWORD:
         return jsonify({"error": "Incorrect password"}), 401
+    if error == storage.ERROR_LOCKED:
+        return jsonify({"error": "Secret is temporarily locked", "retryable": True}), 409
     if error or msg_data is None:
         return jsonify({"error": "Secret not found or already read"}), 404
 

@@ -112,6 +112,26 @@ class TestApiLoggingRegression(unittest.TestCase):
             {"error": "Decryption failed (invalid key)"},
         )
 
+    def test_locked_message_api_returns_retryable_conflict(self):
+        created = self._create_message("secret text")
+
+        with patch.object(
+            storage,
+            "verify_and_pop",
+            return_value=(None, storage.ERROR_LOCKED),
+        ):
+            response = self.client.post(
+                f"/api/message/{created['id']}",
+                json={"key": created["key"]},
+                headers={"X-Request-ID": "test-request-id"},
+            )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(
+            response.get_json(),
+            {"error": "Secret is temporarily locked", "retryable": True},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

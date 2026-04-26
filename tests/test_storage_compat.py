@@ -234,6 +234,31 @@ class TestVerifyAndPopReturnsErrorCodes(unittest.TestCase):
         _, error = storage.verify_and_pop(msg_id)
         self.assertEqual(error, storage.ERROR_NOT_FOUND)
 
+    def test_verify_and_pop_existing_lock_returns_locked(self):
+        msg_id = str(storage.uuid.uuid4())
+        lock_path = os.path.join(self.tmp_dir, f"{msg_id}.json.lock-held")
+        with open(lock_path, "w") as f:
+            f.write("")
+
+        _, error = storage.verify_and_pop(msg_id)
+        self.assertEqual(error, storage.ERROR_LOCKED)
+
+    def test_verify_and_pop_restored_during_probe_returns_locked(self):
+        msg_id = str(storage.uuid.uuid4())
+        file_path = os.path.join(self.tmp_dir, f"{msg_id}.json")
+        exists_results = iter([False, True])
+        original_exists = os.path.exists
+
+        def fake_exists(path):
+            if path == file_path:
+                return next(exists_results)
+            return original_exists(path)
+
+        with patch.object(storage.os.path, "exists", side_effect=fake_exists):
+            _, error = storage.verify_and_pop(msg_id)
+
+        self.assertEqual(error, storage.ERROR_LOCKED)
+
     def test_verify_and_pop_password_required_returns_const(self):
         msg_id = str(storage.uuid.uuid4())
         now = int(time.time())
