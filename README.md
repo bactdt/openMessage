@@ -83,6 +83,10 @@ Ensure you have Python 3.7+ installed.
 3. **Sharing**: A unique URL is generated containing the ID and the decryption key in the URL hash fragment (`http://site.com/v/<id>#<key>`).
 4. **Viewing**: The recipient opens the URL. An animated envelope confirmation page appears. Upon opening the envelope, the browser sends the key to the server. The server reads the file, **immediately deletes it** from the filesystem, decrypts the content, and returns the plain text to be rendered on the frontend.
 
+### Temporary Retry Semantics
+
+During password-protected reads, OpenMessage may briefly hold a message file while it verifies the supplied password. If another read request reaches the same message in that short window, the API returns HTTP `409` with `{"error": "Secret is temporarily locked", "retryable": true}` instead of treating the message as missing. This state is transient: clients should wait briefly and retry once, while non-retryable errors such as `401`, `404`, or `400` should keep their normal handling. The built-in frontend already performs one short retry for this response.
+
 ## Security
 
 - **Path traversal protection**: All message IDs are validated as UUID v4; `realpath` check prevents directory traversal.
