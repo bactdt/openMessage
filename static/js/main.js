@@ -53,6 +53,31 @@ function copyToClipboard(text) {
     }
 }
 
+function delay(ms) {
+    return new Promise(function(resolve) {
+        setTimeout(resolve, ms);
+    });
+}
+
+async function readMessage(id, payload) {
+    var res = await fetch('/api/message/' + id, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    var body = await res.json();
+    return { status: res.status, body: body };
+}
+
+async function readMessageWithRetry(id, payload) {
+    var result = await readMessage(id, payload);
+    if (result.status === 409 && result.body && result.body.retryable) {
+        await delay(150);
+        result = await readMessage(id, payload);
+    }
+    return result;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     setupMarkdownCompiler();
 
@@ -239,15 +264,10 @@ document.addEventListener('DOMContentLoaded', () => {
             viewBtn.innerHTML = '<div class="spinner" style="width:16px;height:16px;margin:0"></div>';
             viewBtn.disabled = true;
 
-            fetch('/api/message/' + id, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    key: hashKeys,
-                    password: password
-                })
+            readMessageWithRetry(id, {
+                key: hashKeys,
+                password: password
             })
-            .then(res => res.json().then(data => ({status: res.status, body: data})))
             .then(({status, body}) => {
                 if (status >= 400) {
                     throw new Error(body.error || 'Failed to decrypt');
