@@ -103,7 +103,12 @@ def _detect_transient_lock(file_path: str) -> bool:
 
 
 PROTOCOL_VERSION = "v1"
-SUPPORTED_VERSIONS = {"v1"}
+SUPPORTED_VERSIONS = {"v1", "v2"}
+
+V2_OPAQUE_PAYLOAD_FIELD = "payload"
+V2_REQUIRED_TOP_LEVEL_FIELDS = frozenset(
+    {"version", "id", "created_at", "expires_at", V2_OPAQUE_PAYLOAD_FIELD}
+)
 
 ERROR_INVALID_ID = "invalid_id"
 ERROR_NOT_FOUND = "not_found"
@@ -128,6 +133,17 @@ def _ensure_version(data: dict) -> dict:
 
 def _validate_version(data: dict) -> bool:
     return data.get("version") in SUPPORTED_VERSIONS
+
+
+def is_v2_data(data: dict) -> bool:
+    return data.get("version") == "v2"
+
+
+def get_v2_payload(data: dict) -> Optional[str]:
+    if not is_v2_data(data):
+        return None
+    payload = data.get(V2_OPAQUE_PAYLOAD_FIELD)
+    return payload if isinstance(payload, str) else None
 
 
 def validate_msg_id(msg_id: str) -> bool:
@@ -167,6 +183,51 @@ def save_message(
         os.chmod(file_path, 0o600)
     except OSError:
         logger.warning("storage.message.chmod_failed path=%s", file_path)
+
+    return msg_id
+
+
+def build_v2_data(
+    payload: str,
+    msg_id: str,
+    created_at: int,
+    expires_at: int,
+    password_hash: Optional[str] = None,
+) -> Dict[str, Any]:
+    return {
+        "version": "v2",
+        "id": msg_id,
+        "created_at": created_at,
+        "expires_at": expires_at,
+        "has_password": password_hash is not None,
+        "password_hash": password_hash,
+        V2_OPAQUE_PAYLOAD_FIELD: payload,
+    }
+
+
+def save_v2_message(
+    payload: str, expires_in_seconds: int, password_hash: Optional[str] = None
+) -> str:
+    ensure_data_dir()
+    msg_id = str(uuid.uuid4())
+    now = int(time.time())
+
+    data = build_v2_data(
+        payload=payload,
+        msg_id=msg_id,
+        created_at=now,
+        expires_at=now + expires_in_seconds,
+        password_hash=password_hash,
+    )
+
+    file_path = os.path.join(DATA_DIR, f"{msg_id}.json")
+    with open(file_path, "w") as f:
+        json.dump(data, f)
+
+    try:
+        os.chmod(file_path, 0o600)
+    except OSError:
+        logger.warning("storage.v2_message.chmod_failed path=%s", file_path)
 
     return msg_id
 
