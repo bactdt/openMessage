@@ -12,4 +12,5 @@ data/*.json
 .pytest_cache/
 .ruff_cache/
 tests/
+docs/
 PLAN.md
