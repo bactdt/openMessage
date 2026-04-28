@@ -8,6 +8,7 @@ import shutil
 import sys
 import tempfile
 import time
+import uuid
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -42,8 +43,7 @@ def _record(operation, durations, total_seconds):
 def run_baseline(count, payload_bytes, expires_in, data_dir):
     original_data_dir = storage.DATA_DIR
     storage.DATA_DIR = data_dir
-    storage._last_cleanup_at = 0
-    storage._last_cleanup_cursor = 0
+    storage.reset_runtime_state()
 
     payload = "x" * payload_bytes
     message_ids = []
@@ -62,10 +62,14 @@ def run_baseline(count, payload_bytes, expires_in, data_dir):
         read_started = time.perf_counter()
         for msg_id in message_ids:
             started = time.perf_counter()
-            data = storage.pop_message(msg_id)
+            data, error, held_path = storage.verify_and_hold(msg_id)
+            if held_path is not None:
+                storage.finish_held_message(held_path)
             read_durations.append(time.perf_counter() - started)
-            if data is None:
-                raise RuntimeError(f"message disappeared during baseline: {msg_id}")
+            if error or data is None:
+                raise RuntimeError(
+                    f"message disappeared during baseline: {msg_id} ({error})"
+                )
         read_total = time.perf_counter() - read_started
     finally:
         storage.DATA_DIR = original_data_dir
@@ -76,7 +80,7 @@ def run_baseline(count, payload_bytes, expires_in, data_dir):
         "data_dir": data_dir,
         "results": [
             _record("save_message", write_durations, write_total),
-            _record("pop_message", read_durations, read_total),
+            _record("verify_and_hold_finish", read_durations, read_total),
         ],
     }
 
@@ -102,9 +106,13 @@ def main():
         parser.error("--payload-bytes must be 0 or greater")
 
     temp_dir = None
+    run_dir = None
     if args.data_dir:
-        data_dir = os.path.abspath(args.data_dir)
-        os.makedirs(data_dir, exist_ok=True)
+        parent_dir = os.path.abspath(args.data_dir)
+        os.makedirs(parent_dir, exist_ok=True)
+        run_dir = os.path.join(parent_dir, f"baseline-{uuid.uuid4().hex}")
+        os.makedirs(run_dir, mode=0o700)
+        data_dir = run_dir
     else:
         temp_dir = tempfile.mkdtemp(prefix="openmessage-storage-baseline-")
         data_dir = temp_dir
@@ -120,10 +128,8 @@ def main():
     finally:
         if temp_dir:
             shutil.rmtree(temp_dir)
-        elif args.data_dir and not args.keep_data:
-            for name in os.listdir(data_dir):
-                if name.endswith(".json") or ".json.lock-" in name:
-                    os.remove(os.path.join(data_dir, name))
+        elif run_dir and not args.keep_data:
+            shutil.rmtree(run_dir)
 
 
 if __name__ == "__main__":

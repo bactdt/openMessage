@@ -22,25 +22,41 @@ _UUID_RE = re.compile(
 CLEANUP_INTERVAL_SECONDS = 300
 LOCK_DETECTION_WINDOW_SECONDS = 0.05
 LOCK_DETECTION_POLL_INTERVAL_SECONDS = 0.005
-_last_cleanup_at = 0
-_last_cleanup_cursor = 0
+_cleanup_state = {"last_cleanup_at": 0, "last_cleanup_cursor": 0}
+
+
+def reset_runtime_state() -> None:
+    """Reset in-process storage runtime state for tests and one-off benchmarks."""
+    _cleanup_state["last_cleanup_at"] = 0
+    _cleanup_state["last_cleanup_cursor"] = 0
 
 
 def _take_message(file_path: str) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
+    """
+    Move a message file to a held path and load JSON data.
+
+    Returns:
+    - (None, None): source file was missing or could not be moved.
+    - (held_path, data): source file was held and parsed successfully.
+
+    Corrupted or unreadable held files are deleted before returning (None, None).
+    """
     held_path = f"{file_path}.lock-{uuid.uuid4().hex}"
     try:
         os.replace(file_path, held_path)
     except FileNotFoundError:
         return None, None
     except OSError:
+        logger.warning("storage.take.failed path=%s", file_path)
         return None, None
 
     try:
         with open(held_path, "r") as f:
             data = json.load(f)
     except (json.JSONDecodeError, OSError):
+        logger.warning("storage.held.corrupt_deleted path=%s", held_path)
         _delete_held_message(held_path)
-        return held_path, None
+        return None, None
 
     return held_path, data
 
@@ -49,7 +65,7 @@ def _delete_held_message(held_path: str) -> None:
     try:
         os.remove(held_path)
     except OSError:
-        logger.warning("Failed to delete held message file: %s", held_path)
+        logger.warning("storage.held.delete_failed path=%s", held_path)
 
 
 def _restore_held_message(held_path: str, file_path: str) -> None:
@@ -58,9 +74,9 @@ def _restore_held_message(held_path: str, file_path: str) -> None:
         try:
             os.chmod(file_path, 0o600)
         except OSError:
-            logger.warning("Failed to chmod restored message file: %s", file_path)
+            logger.warning("storage.restore.chmod_failed path=%s", file_path)
     except OSError:
-        logger.error("Failed to restore held message file: %s -> %s", held_path, file_path)
+        logger.error("storage.restore.failed held_path=%s path=%s", held_path, file_path)
         _delete_held_message(held_path)
 
 
@@ -72,7 +88,7 @@ def _has_held_message_lock(file_path: str) -> bool:
             for name in os.listdir(os.path.dirname(file_path))
         )
     except OSError:
-        logger.warning("Failed to inspect message lock state: %s", file_path)
+        logger.warning("storage.lock.inspect_failed path=%s", file_path)
         return False
 
 
@@ -119,13 +135,11 @@ def validate_msg_id(msg_id: str) -> bool:
 
 
 def ensure_data_dir():
-    if not os.path.exists(DATA_DIR):
-        os.makedirs(DATA_DIR, mode=0o700, exist_ok=True)
-    else:
-        try:
-            os.chmod(DATA_DIR, 0o700)
-        except OSError:
-            logger.warning("Failed to chmod data directory: %s", DATA_DIR)
+    os.makedirs(DATA_DIR, mode=0o700, exist_ok=True)
+    try:
+        os.chmod(DATA_DIR, 0o700)
+    except OSError:
+        logger.warning("storage.data_dir.chmod_failed path=%s", DATA_DIR)
 
 
 def save_message(
@@ -152,7 +166,7 @@ def save_message(
     try:
         os.chmod(file_path, 0o600)
     except OSError:
-        logger.warning("Failed to chmod message file: %s", file_path)
+        logger.warning("storage.message.chmod_failed path=%s", file_path)
 
     return msg_id
 
@@ -168,7 +182,12 @@ def _resolve_path(msg_id: str) -> Optional[str]:
 
 
 def get_message_metadata(msg_id: str) -> Optional[Dict[str, Any]]:
-    """Returns message metadata without ciphertext if valid, None if expired/missing."""
+    """
+    Return non-sensitive message metadata without ciphertext.
+
+    This is a best-effort, non-destructive read used by the confirmation page.
+    The destructive API read path uses verify_and_hold() for stronger handoff semantics.
+    """
     ensure_data_dir()
     file_path = _resolve_path(msg_id)
     if file_path is None:
@@ -193,7 +212,7 @@ def get_message_metadata(msg_id: str) -> Optional[Dict[str, Any]]:
         try:
             os.remove(file_path)
         except OSError:
-            logger.warning("Failed to remove expired message file: %s", file_path)
+            logger.warning("storage.metadata.expired_delete_failed path=%s", file_path)
         return None
 
     # Return safe metadata
@@ -205,88 +224,66 @@ def get_message_metadata(msg_id: str) -> Optional[Dict[str, Any]]:
     }
 
 
-def pop_message(msg_id: str) -> Optional[Dict[str, Any]]:
-    """Reads the message and deletes it permanently. Returns the full data including ciphertext."""
-    ensure_data_dir()
-    file_path = _resolve_path(msg_id)
-    if file_path is None:
-        return None
-
-    held_path, data = _take_message(file_path)
-    if held_path is None:
-        return None
-
-    if not data:
-        return None
-
-    data = _ensure_version(data)
-
-    if not _validate_version(data):
-        _delete_held_message(held_path)
-        return None
-
-    # Still check expiration before returning
-    if int(time.time()) > data.get("expires_at", 0):
-        _delete_held_message(held_path)
-        return None
-
-    _delete_held_message(held_path)
-
-    return data
-
-
-def verify_and_pop(
+def verify_and_hold(
     msg_id: str, password_verify_fn=None
-) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+) -> Tuple[Optional[Dict[str, Any]], Optional[str], Optional[str]]:
     """
-    Atomically read, verify password, and pop a message.
-    password_verify_fn: callable(password_hash, provided_password) -> bool
-    Returns (data, error) tuple. error is None on success.
-    On wrong password the file is NOT deleted.
+    Atomically read and verify a message while holding its file.
+    password_verify_fn: callable(password_hash) -> bool
+    The caller must either delete or restore the returned held_path.
     """
     ensure_data_dir()
     file_path = _resolve_path(msg_id)
     if file_path is None:
-        return None, ERROR_INVALID_ID
+        return None, ERROR_INVALID_ID, None
 
     held_path, data = _take_message(file_path)
     if held_path is None:
         if _detect_transient_lock(file_path):
-            return None, ERROR_LOCKED
-        return None, ERROR_NOT_FOUND
+            return None, ERROR_LOCKED, None
+        return None, ERROR_NOT_FOUND, None
 
     if data is None:
-        return None, ERROR_NOT_FOUND
+        return None, ERROR_NOT_FOUND, None
 
     data = _ensure_version(data)
 
     if not _validate_version(data):
         _delete_held_message(held_path)
-        return None, ERROR_UNSUPPORTED_VERSION
+        return None, ERROR_UNSUPPORTED_VERSION, None
 
     if int(time.time()) > data.get("expires_at", 0):
         _delete_held_message(held_path)
-        return None, ERROR_EXPIRED
+        return None, ERROR_EXPIRED, None
 
     if data.get("has_password"):
         if password_verify_fn is None:
             _restore_held_message(held_path, file_path)
-            return None, ERROR_PASSWORD_REQUIRED
+            return None, ERROR_PASSWORD_REQUIRED, None
         verified = password_verify_fn(data.get("password_hash"))
         if not verified:
             _restore_held_message(held_path, file_path)
-            return None, ERROR_WRONG_PASSWORD
+            return None, ERROR_WRONG_PASSWORD, None
 
+    return data, None, held_path
+
+
+def finish_held_message(held_path: str) -> None:
     _delete_held_message(held_path)
 
-    return data, None
+
+def restore_held_message(msg_id: str, held_path: str) -> None:
+    file_path = _resolve_path(msg_id)
+    if file_path is None:
+        _delete_held_message(held_path)
+        return
+    _restore_held_message(held_path, file_path)
 
 
 def cleanup_expired():
     """Iterate and remove expired files. Can be run periodically."""
     ensure_data_dir()
     now = int(time.time())
-    global _last_cleanup_cursor
     files = [name for name in os.listdir(DATA_DIR) if name.endswith(".json")]
     if not files:
         return
@@ -296,7 +293,7 @@ def cleanup_expired():
     failed = 0
 
     batch_size = 200
-    start = _last_cleanup_cursor % len(files)
+    start = _cleanup_state["last_cleanup_cursor"] % len(files)
     ordered = files[start:] + files[:start]
 
     for filename in ordered[:batch_size]:
@@ -317,22 +314,21 @@ def cleanup_expired():
                 os.remove(file_path)
                 deleted += 1
             except OSError:
-                logger.warning("Failed to remove corrupted message file: %s", file_path)
+                logger.warning("storage.cleanup.delete_failed path=%s", file_path)
                 failed += 1
 
-    _last_cleanup_cursor = start + batch_size
+    _cleanup_state["last_cleanup_cursor"] = start + batch_size
 
     logger.info(
-        "cleanup_expired: scanned=%d deleted=%d failed=%d",
+        "storage.cleanup.completed scanned=%d deleted=%d failed=%d",
         scanned, deleted, failed,
     )
 
 
 def maybe_cleanup_expired() -> None:
-    global _last_cleanup_at
     now = int(time.time())
-    if now - _last_cleanup_at < CLEANUP_INTERVAL_SECONDS:
+    if now - _cleanup_state["last_cleanup_at"] < CLEANUP_INTERVAL_SECONDS:
         return
 
     cleanup_expired()
-    _last_cleanup_at = now
+    _cleanup_state["last_cleanup_at"] = now

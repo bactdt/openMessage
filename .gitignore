@@ -9,8 +9,7 @@ env/
 data/*.json
 !data/.gitkeep
 .DS_Store
-PLAN.md
-docs/*
-tests/
 .pytest_cache/
 .ruff_cache/
+tests/
+PLAN.md

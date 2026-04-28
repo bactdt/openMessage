@@ -4,7 +4,7 @@ import platform
 import sys
 import uuid
 
-from flask import Flask, g, request, jsonify, render_template
+from flask import Flask, g, has_request_context, request, jsonify, render_template
 from flask_limiter import Limiter
 from flask_limiter.errors import RateLimitExceeded
 from flask_limiter.util import get_remote_address
@@ -49,11 +49,38 @@ app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
 
 ALLOWED_EXPIRES = {3600, 86400, 604800}
 
+_MESSAGE_READ_ERROR_RESPONSES = {
+    storage.ERROR_INVALID_ID: (404, {"error": "Secret not found or already read"}),
+    storage.ERROR_NOT_FOUND: (404, {"error": "Secret not found or already read"}),
+    storage.ERROR_EXPIRED: (404, {"error": "Secret not found or already read"}),
+    storage.ERROR_UNSUPPORTED_VERSION: (
+        404,
+        {"error": "Secret not found or already read"},
+    ),
+    storage.ERROR_PASSWORD_REQUIRED: (
+        401,
+        {"error": "Password required", "needs_password": True},
+    ),
+    storage.ERROR_WRONG_PASSWORD: (401, {"error": "Incorrect password"}),
+    storage.ERROR_LOCKED: (
+        409,
+        {"error": "Secret is temporarily locked", "retryable": True},
+    ),
+}
+
 
 class RequestIDFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
-        record.request_id = getattr(g, "request_id", "-")
+        record.request_id = getattr(g, "request_id", "-") if has_request_context() else "-"
         return True
+
+
+def _message_read_error_response(error):
+    status, body = _MESSAGE_READ_ERROR_RESPONSES.get(
+        error,
+        (404, {"error": "Secret not found or already read"}),
+    )
+    return jsonify(body), status
 
 
 def _init_logging() -> None:
@@ -200,9 +227,6 @@ def view_message_api(msg_id):
     if password is not None and (not isinstance(password, str) or len(password) > 1024):
         return jsonify({"error": "Invalid password format"}), 400
 
-    if not storage.validate_msg_id(msg_id):
-        return jsonify({"error": "Secret not found or already read"}), 404
-
     verify_fn = None
     msg_meta = storage.get_message_metadata(msg_id)
     if msg_meta and msg_meta.get("has_password"):
@@ -210,28 +234,20 @@ def view_message_api(msg_id):
             return jsonify({"error": "Password required", "needs_password": True}), 401
         verify_fn = lambda pw_hash: verify_password(password, pw_hash)
 
-    msg_data, error = storage.verify_and_pop(msg_id, verify_fn)
-    if (
-        error == storage.ERROR_INVALID_ID
-        or error == storage.ERROR_NOT_FOUND
-        or error == storage.ERROR_EXPIRED
-        or error == storage.ERROR_UNSUPPORTED_VERSION
-    ):
-        return jsonify({"error": "Secret not found or already read"}), 404
-    if error == storage.ERROR_PASSWORD_REQUIRED:
-        return jsonify({"error": "Password required", "needs_password": True}), 401
-    if error == storage.ERROR_WRONG_PASSWORD:
-        return jsonify({"error": "Incorrect password"}), 401
-    if error == storage.ERROR_LOCKED:
-        return jsonify({"error": "Secret is temporarily locked", "retryable": True}), 409
+    msg_data, error, held_path = storage.verify_and_hold(msg_id, verify_fn)
     if error or msg_data is None:
-        return jsonify({"error": "Secret not found or already read"}), 404
+        return _message_read_error_response(error)
 
     try:
         plaintext = decrypt_message(msg_data["ciphertext"], key)
     except Exception:
         logger.exception("Message decryption failed")
+        if held_path is not None:
+            storage.restore_held_message(msg_id, held_path)
         return jsonify({"error": "Decryption failed (invalid key)"}), 400
+
+    if held_path is not None:
+        storage.finish_held_message(held_path)
 
     return jsonify({"content": plaintext})
 
