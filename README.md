@@ -64,7 +64,7 @@ Ensure you have Python 3.7+ installed.
    python app.py
 
    # Production mode (using gunicorn)
-   gunicorn --bind 127.0.0.1:5000 app:app
+   gunicorn --bind 127.0.0.1:5000 --workers 2 --threads 4 --timeout 30 app:app
    ```
 
 4. Access the app in your browser at `http://localhost:5000`.
@@ -75,6 +75,38 @@ Ensure you have Python 3.7+ installed.
 | --- | --- | --- |
 | `SECRET_KEY` | Flask secret key for sessions | Auto-generated random value |
 | `RATE_LIMIT_STORAGE_URI` | Flask-Limiter storage backend (set Redis in production) | `memory://` |
+
+### Production Gunicorn Settings
+
+Use Gunicorn as the WSGI process manager and keep Flask as the application runtime. A practical starting point for a small OpenMessage deployment is:
+
+```bash
+gunicorn \
+  --bind 127.0.0.1:5000 \
+  --workers 2 \
+  --threads 4 \
+  --worker-class gthread \
+  --timeout 30 \
+  --graceful-timeout 30 \
+  --keep-alive 2 \
+  --max-requests 1000 \
+  --max-requests-jitter 100 \
+  app:app
+```
+
+Tune from that baseline instead of migrating frameworks first:
+
+- Start with `workers = CPU cores` or `CPU cores * 2` for small hosts, then raise only when CPU is not saturated.
+- Keep `threads` between `2` and `8`; this app has short request handlers with local file I/O, so moderate threads improve concurrency without excessive process count.
+- Keep `timeout` and `graceful-timeout` around `30s`; normal create/view requests should complete far faster, so longer values usually hide stuck workers.
+- Set `RATE_LIMIT_STORAGE_URI` to Redis or another shared backend in production. The default `memory://` limiter is per-process and does not coordinate across Gunicorn workers.
+- Place `data/` on local persistent storage. Avoid slow network filesystems unless storage baseline p95 is re-measured there.
+
+Measure storage before and after deployment changes:
+
+```bash
+./venv/bin/python scripts/storage_baseline.py --count 1000 --payload-bytes 1024
+```
 
 ## How It Works
 
