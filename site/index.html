@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="OpenMessage is a secure, view-once, self-destructing message tool for private sharing.">
+  <title>OpenMessage - View-once secure messages</title>
+  <link rel="stylesheet" href="css/landing.css">
+</head>
+<body>
+  <header class="hero">
+    <nav class="nav" aria-label="Primary navigation">
+      <a class="brand" href="#top" aria-label="OpenMessage home">
+        <span class="brand-mark">OM</span>
+        <span>OpenMessage</span>
+      </a>
+      <div class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#security">Security</a>
+        <a href="#self-host">Self-host</a>
+      </div>
+    </nav>
+
+    <section id="top" class="hero-grid">
+      <div class="hero-copy">
+        <p class="eyebrow">Burn after reading</p>
+        <h1>Share secrets that disappear after one view.</h1>
+        <p class="lead">
+          OpenMessage is a lightweight, self-hostable tool for creating encrypted,
+          view-once messages without a database. Send a link, let the recipient open it,
+          then remove the secret from the server.
+        </p>
+        <div class="actions">
+          <a class="button button-primary" href="https://github.com/" target="_blank" rel="noreferrer">View on GitHub</a>
+          <a class="button button-secondary" href="#self-host">Self-host it</a>
+        </div>
+        <dl class="stats" aria-label="Project highlights">
+          <div>
+            <dt>0</dt>
+            <dd>database required</dd>
+          </div>
+          <div>
+            <dt>1</dt>
+            <dd>allowed read</dd>
+          </div>
+          <div>
+            <dt>v1</dt>
+            <dd>stable protocol</dd>
+          </div>
+        </dl>
+      </div>
+
+      <div class="hero-card" aria-label="OpenMessage screenshot preview">
+        <div class="browser-bar">
+          <span></span><span></span><span></span>
+        </div>
+        <picture>
+          <source srcset="assets/homepage-dark.png" media="(prefers-color-scheme: dark)">
+          <img src="assets/homepage.png" alt="OpenMessage create message screen">
+        </picture>
+      </div>
+    </section>
+  </header>
+
+  <main>
+    <section id="features" class="section">
+      <div class="section-heading">
+        <p class="eyebrow">Core features</p>
+        <h2>Small surface area, strong defaults.</h2>
+        <p>OpenMessage focuses on one job: make short-lived secrets easy to share and hard to accidentally retain.</p>
+      </div>
+      <div class="feature-grid">
+        <article class="feature-card">
+          <span class="icon">01</span>
+          <h3>View-once messages</h3>
+          <p>Messages are deleted from storage after a successful read, preserving the burn-after-reading guarantee.</p>
+        </article>
+        <article class="feature-card">
+          <span class="icon">02</span>
+          <h3>No database</h3>
+          <p>Encrypted message records are stored as local JSON files for a simple deployment and backup story.</p>
+        </article>
+        <article class="feature-card">
+          <span class="icon">03</span>
+          <h3>Optional passwords</h3>
+          <p>Add a second layer of protection for recipients before the secret can be revealed.</p>
+        </article>
+        <article class="feature-card">
+          <span class="icon">04</span>
+          <h3>Safe previews</h3>
+          <p>Link preview crawlers do not burn the message. Viewing requires an explicit recipient action.</p>
+        </article>
+        <article class="feature-card">
+          <span class="icon">05</span>
+          <h3>Rich content</h3>
+          <p>Markdown and math rendering make it useful for notes, snippets, and formatted instructions.</p>
+        </article>
+        <article class="feature-card">
+          <span class="icon">06</span>
+          <h3>Self-host friendly</h3>
+          <p>Run it with Flask locally or behind Gunicorn in production with minimal infrastructure.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section split">
+      <div>
+        <p class="eyebrow">How it works</p>
+        <h2>Simple lifecycle, explicit destruction.</h2>
+        <ol class="steps">
+          <li><strong>Create.</strong> Write a secret and optionally set a password and expiration time.</li>
+          <li><strong>Share.</strong> Send the generated link. The decryption key stays in the URL fragment.</li>
+          <li><strong>Open.</strong> The recipient confirms the view action and submits the key to decrypt.</li>
+          <li><strong>Burn.</strong> After a successful read, the stored message is removed from the server.</li>
+        </ol>
+      </div>
+      <div class="screenshot-stack">
+        <img class="shot shot-top" src="assets/success.png" alt="OpenMessage generated share link screen">
+        <img class="shot shot-bottom" src="assets/success-dark.png" alt="OpenMessage generated share link dark screen">
+      </div>
+    </section>
+
+    <section id="security" class="section security-panel">
+      <div class="section-heading compact">
+        <p class="eyebrow">Security model</p>
+        <h2>Designed to avoid accidental retention.</h2>
+      </div>
+      <div class="security-grid">
+        <p><strong>No key storage.</strong> The decryption key is returned to the client and never stored with ciphertext.</p>
+        <p><strong>Atomic read lifecycle.</strong> A message is held during verification and only finished after successful decryption.</p>
+        <p><strong>Retry-safe locks.</strong> Short file handoff windows return retryable conflicts instead of false not-found states.</p>
+        <p><strong>Hardened routes.</strong> UUID validation, no-store cache headers, CSP, rate limits, and expiration checks are built in.</p>
+      </div>
+    </section>
+
+    <section id="self-host" class="section split self-host">
+      <div>
+        <p class="eyebrow">Self-host</p>
+        <h2>Run it where your secrets should live.</h2>
+        <p>
+          OpenMessage is built with Python and Flask. Clone the repository, install dependencies,
+          set a secret key for production, and run it behind your reverse proxy of choice.
+        </p>
+      </div>
+      <pre><code>git clone &lt;repo-url&gt;
+cd openMessage
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+python app.py</code></pre>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>OpenMessage is released under the MIT License.</p>
+    <a href="#top">Back to top</a>
+  </footer>
+</body>
+</html>
