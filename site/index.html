@@ -1,146 +1,106 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="OpenMessage is a secure, view-once, self-destructing message tool for private sharing.">
-  <title>OpenMessage - View-once secure messages</title>
+  <meta name="description" content="OpenMessage 是一个简洁、安全、阅后即焚的一次性消息工具。">
+  <title>OpenMessage</title>
   <link rel="stylesheet" href="css/landing.css">
 </head>
 <body>
-  <header class="hero">
-    <nav class="nav" aria-label="Primary navigation">
-      <a class="brand" href="#top" aria-label="OpenMessage home">
-        <span class="brand-mark">OM</span>
+  <header class="nav">
+    <div class="nav-inner">
+      <a class="brand" href="#top" aria-label="OpenMessage 首页">
+        <span class="logo">OM</span>
         <span>OpenMessage</span>
       </a>
-      <div class="nav-links">
-        <a href="#features">Features</a>
-        <a href="#security">Security</a>
-        <a href="#self-host">Self-host</a>
-      </div>
-    </nav>
-
-    <section id="top" class="hero-grid">
-      <div class="hero-copy">
-        <p class="eyebrow">Burn after reading</p>
-        <h1>Share secrets that disappear after one view.</h1>
-        <p class="lead">
-          OpenMessage is a lightweight, self-hostable tool for creating encrypted,
-          view-once messages without a database. Send a link, let the recipient open it,
-          then remove the secret from the server.
-        </p>
-        <div class="actions">
-          <a class="button button-primary" href="https://github.com/" target="_blank" rel="noreferrer">View on GitHub</a>
-          <a class="button button-secondary" href="#self-host">Self-host it</a>
-        </div>
-        <dl class="stats" aria-label="Project highlights">
-          <div>
-            <dt>0</dt>
-            <dd>database required</dd>
-          </div>
-          <div>
-            <dt>1</dt>
-            <dd>allowed read</dd>
-          </div>
-          <div>
-            <dt>v1</dt>
-            <dd>stable protocol</dd>
-          </div>
-        </dl>
-      </div>
-
-      <div class="hero-card" aria-label="OpenMessage screenshot preview">
-        <div class="browser-bar">
-          <span></span><span></span><span></span>
-        </div>
-        <picture>
-          <source srcset="assets/homepage-dark.png" media="(prefers-color-scheme: dark)">
-          <img src="assets/homepage.png" alt="OpenMessage create message screen">
-        </picture>
-      </div>
-    </section>
+      <nav class="links" aria-label="主导航">
+        <a href="#top">首页</a>
+        <a href="#features">特性</a>
+        <a href="#deploy">部署</a>
+        <a href="#security">安全</a>
+        <a href="https://github.com/" target="_blank" rel="noreferrer">GitHub</a>
+      </nav>
+    </div>
   </header>
 
-  <main>
-    <section id="features" class="section">
-      <div class="section-heading">
-        <p class="eyebrow">Core features</p>
-        <h2>Small surface area, strong defaults.</h2>
-        <p>OpenMessage focuses on one job: make short-lived secrets easy to share and hard to accidentally retain.</p>
+  <main id="top">
+    <section class="hero">
+      <div class="hero-inner">
+        <h1><span>OpenMessage</span></h1>
+        <p class="tagline">简洁、安全、可自部署的一次性阅后即焚消息工具。</p>
+        <div class="actions">
+          <a class="button brand-button" href="#demo">界面预览</a>
+          <a class="button alt-button" href="#deploy">部署说明</a>
+          <a class="button alt-button" href="https://github.com/" target="_blank" rel="noreferrer">查看源码</a>
+        </div>
       </div>
+    </section>
+
+    <section id="features" class="features">
       <div class="feature-grid">
         <article class="feature-card">
-          <span class="icon">01</span>
-          <h3>View-once messages</h3>
-          <p>Messages are deleted from storage after a successful read, preserving the burn-after-reading guarantee.</p>
+          <h2>🔐 端到端思路</h2>
+          <p>密钥通过链接片段交给客户端，服务端只保存密文和必要元数据。</p>
         </article>
         <article class="feature-card">
-          <span class="icon">02</span>
-          <h3>No database</h3>
-          <p>Encrypted message records are stored as local JSON files for a simple deployment and backup story.</p>
+          <h2>🔥 阅后即焚</h2>
+          <p>消息成功读取后从服务端删除，减少敏感内容的长期留存风险。</p>
         </article>
         <article class="feature-card">
-          <span class="icon">03</span>
-          <h3>Optional passwords</h3>
-          <p>Add a second layer of protection for recipients before the secret can be revealed.</p>
+          <h2>🗂️ 无需数据库</h2>
+          <p>使用本地 JSON 文件存储消息，适合轻量部署、个人服务和小团队使用。</p>
         </article>
         <article class="feature-card">
-          <span class="icon">04</span>
-          <h3>Safe previews</h3>
-          <p>Link preview crawlers do not burn the message. Viewing requires an explicit recipient action.</p>
+          <h2>🛡️ 密码保护</h2>
+          <p>可为消息增加二次密码验证，错误密码不会销毁消息。</p>
         </article>
         <article class="feature-card">
-          <span class="icon">05</span>
-          <h3>Rich content</h3>
-          <p>Markdown and math rendering make it useful for notes, snippets, and formatted instructions.</p>
+          <h2>🧭 安全预览</h2>
+          <p>链接预览机器人不会触发销毁，必须由用户明确打开信封后读取。</p>
         </article>
         <article class="feature-card">
-          <span class="icon">06</span>
-          <h3>Self-host friendly</h3>
-          <p>Run it with Flask locally or behind Gunicorn in production with minimal infrastructure.</p>
+          <h2>✍️ 富文本支持</h2>
+          <p>支持 Markdown 与数学公式渲染，适合发送说明、片段和格式化内容。</p>
+        </article>
+        <article class="feature-card">
+          <h2>🌗 深色模式</h2>
+          <p>内置浅色和深色体验，适配不同系统偏好。</p>
+        </article>
+        <article class="feature-card">
+          <h2>⚙️ 生产友好</h2>
+          <p>支持 Flask 本地运行，也可以通过 Gunicorn 部署到生产环境。</p>
         </article>
       </div>
     </section>
 
-    <section class="section split">
-      <div>
-        <p class="eyebrow">How it works</p>
-        <h2>Simple lifecycle, explicit destruction.</h2>
-        <ol class="steps">
-          <li><strong>Create.</strong> Write a secret and optionally set a password and expiration time.</li>
-          <li><strong>Share.</strong> Send the generated link. The decryption key stays in the URL fragment.</li>
-          <li><strong>Open.</strong> The recipient confirms the view action and submits the key to decrypt.</li>
-          <li><strong>Burn.</strong> After a successful read, the stored message is removed from the server.</li>
-        </ol>
+    <section id="demo" class="preview">
+      <div class="section-title">
+        <h2>界面预览</h2>
+        <p>保持简单的创建、分享、打开流程，降低发送临时秘密的操作成本。</p>
       </div>
-      <div class="screenshot-stack">
-        <img class="shot shot-top" src="assets/success.png" alt="OpenMessage generated share link screen">
-        <img class="shot shot-bottom" src="assets/success-dark.png" alt="OpenMessage generated share link dark screen">
-      </div>
-    </section>
-
-    <section id="security" class="section security-panel">
-      <div class="section-heading compact">
-        <p class="eyebrow">Security model</p>
-        <h2>Designed to avoid accidental retention.</h2>
-      </div>
-      <div class="security-grid">
-        <p><strong>No key storage.</strong> The decryption key is returned to the client and never stored with ciphertext.</p>
-        <p><strong>Atomic read lifecycle.</strong> A message is held during verification and only finished after successful decryption.</p>
-        <p><strong>Retry-safe locks.</strong> Short file handoff windows return retryable conflicts instead of false not-found states.</p>
-        <p><strong>Hardened routes.</strong> UUID validation, no-store cache headers, CSP, rate limits, and expiration checks are built in.</p>
+      <div class="preview-grid">
+        <figure>
+          <picture>
+            <source srcset="assets/homepage-dark.png" media="(prefers-color-scheme: dark)">
+            <img src="assets/homepage.png" alt="OpenMessage 创建消息页面">
+          </picture>
+          <figcaption>创建一次性消息</figcaption>
+        </figure>
+        <figure>
+          <picture>
+            <source srcset="assets/success-dark.png" media="(prefers-color-scheme: dark)">
+            <img src="assets/success.png" alt="OpenMessage 分享链接页面">
+          </picture>
+          <figcaption>生成并分享链接</figcaption>
+        </figure>
       </div>
     </section>
 
-    <section id="self-host" class="section split self-host">
-      <div>
-        <p class="eyebrow">Self-host</p>
-        <h2>Run it where your secrets should live.</h2>
-        <p>
-          OpenMessage is built with Python and Flask. Clone the repository, install dependencies,
-          set a secret key for production, and run it behind your reverse proxy of choice.
-        </p>
+    <section id="deploy" class="doc-section">
+      <div class="doc-copy">
+        <h2>快速部署</h2>
+        <p>OpenMessage 是一个 Python + Flask 项目，克隆后安装依赖即可运行。生产环境建议使用 Gunicorn，并配置持久化数据目录和共享限流存储。</p>
       </div>
       <pre><code>git clone &lt;repo-url&gt;
 cd openMessage
@@ -149,11 +109,24 @@ source venv/bin/activate
 pip install -r requirements.txt
 python app.py</code></pre>
     </section>
+
+    <section id="security" class="doc-section security">
+      <div class="doc-copy">
+        <h2>安全边界</h2>
+        <p>项目默认启用 UUID 路径校验、CSP、安全响应头、过期清理和请求限流。读取流程会先暂持消息，只有解密成功后才完成删除。</p>
+      </div>
+      <ul class="security-list">
+        <li>密钥不与密文一起存储</li>
+        <li>错误密码不会销毁消息</li>
+        <li>短暂锁竞争返回可重试状态</li>
+        <li>过期消息自动清理</li>
+      </ul>
+    </section>
   </main>
 
   <footer class="footer">
-    <p>OpenMessage is released under the MIT License.</p>
-    <a href="#top">Back to top</a>
+    <span>Released under the MIT License.</span>
+    <a href="#top">返回顶部</a>
   </footer>
 </body>
 </html>
