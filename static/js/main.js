@@ -6,6 +6,11 @@ function setupMarkdownCompiler() {
     });
 }
 
+function isV2E2EEnabled() {
+    var meta = document.querySelector('meta[name="openmessage-v2-e2e"]');
+    return !!(meta && meta.getAttribute('content') === 'enabled' && window.crypto && window.crypto.subtle);
+}
+
 function processContent(text) {
     if (!window.marked || !window.DOMPurify) return text;
     let html = marked.parse(text);
@@ -67,6 +72,98 @@ async function readMessage(id, payload) {
     });
     var body = await res.json();
     return { status: res.status, body: body };
+}
+
+async function createV2Message(payload) {
+    var res = await fetch('/api/v2/message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    var body = await res.json();
+    return { status: res.status, body: body };
+}
+
+async function readV2Message(id, payload) {
+    var res = await fetch('/api/v2/message/' + id, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    var body = await res.json();
+    return { status: res.status, body: body };
+}
+
+async function readV2MessageWithRetry(id, payload) {
+    var result = await readV2Message(id, payload);
+    if (result.status === 409 && result.body && result.body.retryable) {
+        await delay(150);
+        result = await readV2Message(id, payload);
+    }
+    return result;
+}
+
+function bytesToBase64Url(bytes) {
+    var binary = '';
+    bytes.forEach(function(byte) {
+        binary += String.fromCharCode(byte);
+    });
+    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+function base64UrlToBytes(value) {
+    var base64 = value.replace(/-/g, '+').replace(/_/g, '/');
+    base64 += '='.repeat((4 - base64.length % 4) % 4);
+    var binary = atob(base64);
+    var bytes = new Uint8Array(binary.length);
+    for (var i = 0; i < binary.length; i += 1) {
+        bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+}
+
+async function encryptV2Content(content) {
+    var key = await window.crypto.subtle.generateKey(
+        { name: 'AES-GCM', length: 256 },
+        true,
+        ['encrypt', 'decrypt']
+    );
+    var rawKey = await window.crypto.subtle.exportKey('raw', key);
+    var iv = window.crypto.getRandomValues(new Uint8Array(12));
+    var encoded = new TextEncoder().encode(content);
+    var encrypted = await window.crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv }, key, encoded);
+
+    return {
+        fragment: 'v2.' + bytesToBase64Url(new Uint8Array(rawKey)),
+        payload: {
+            version: 'v2',
+            alg: 'AES-GCM',
+            iv: bytesToBase64Url(iv),
+            ciphertext: bytesToBase64Url(new Uint8Array(encrypted))
+        }
+    };
+}
+
+async function decryptV2Content(payload, fragment) {
+    if (!fragment || fragment.indexOf('v2.') !== 0) {
+        throw new Error('v2 decryption key missing from URL.');
+    }
+    if (!payload || payload.version !== 'v2' || payload.alg !== 'AES-GCM') {
+        throw new Error('Invalid v2 payload.');
+    }
+
+    var keyBytes = base64UrlToBytes(fragment.substring(3));
+    var key = await window.crypto.subtle.importKey(
+        'raw',
+        keyBytes,
+        { name: 'AES-GCM' },
+        false,
+        ['decrypt']
+    );
+    var iv = base64UrlToBytes(payload.iv);
+    var ciphertext = base64UrlToBytes(payload.ciphertext);
+    var decrypted = await window.crypto.subtle.decrypt({ name: 'AES-GCM', iv: iv }, key, ciphertext);
+    return new TextDecoder().decode(decrypted);
 }
 
 async function readMessageWithRetry(id, payload) {
@@ -139,27 +236,45 @@ document.addEventListener('DOMContentLoaded', () => {
             createBtn.disabled = true;
 
             try {
-                var res = await fetch('/api/message', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        content: content,
+                var data;
+                var fragment;
+
+                if (isV2E2EEnabled()) {
+                    var encrypted = await encryptV2Content(content);
+                    var v2Result = await createV2Message({
+                        payload: encrypted.payload,
                         password: password || null,
                         expires_in: expiresIn
-                    })
-                });
+                    });
+                    data = v2Result.body;
+                    if (v2Result.status >= 400) {
+                        throw new Error(data.error || 'Failed to create secret');
+                    }
+                    fragment = encrypted.fragment;
+                } else {
+                    var res = await fetch('/api/message', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            content: content,
+                            password: password || null,
+                            expires_in: expiresIn
+                        })
+                    });
 
-                var data = await res.json();
+                    data = await res.json();
 
-                if (!res.ok) {
-                    throw new Error(data.error || 'Failed to create secret');
+                    if (!res.ok) {
+                        throw new Error(data.error || 'Failed to create secret');
+                    }
+                    fragment = data.key;
                 }
 
                 document.getElementById('create-panel').classList.add('hidden');
                 document.getElementById('success-panel').classList.remove('hidden');
 
                 var baseUrl = window.location.origin;
-                var shareUrl = baseUrl + '/v/' + data.id + '#' + data.key;
+                var shareUrl = baseUrl + '/v/' + data.id + '#' + fragment;
                 document.getElementById('share-url').value = shareUrl;
 
             } catch (err) {
@@ -264,10 +379,26 @@ document.addEventListener('DOMContentLoaded', () => {
             viewBtn.innerHTML = '<div class="spinner" style="width:16px;height:16px;margin:0"></div>';
             viewBtn.disabled = true;
 
-            readMessageWithRetry(id, {
-                key: hashKeys,
-                password: password
-            })
+            var readPromise;
+            if (hashKeys.indexOf('v2.') === 0 && isV2E2EEnabled()) {
+                readPromise = readV2MessageWithRetry(id, { password: password })
+                    .then(async function(result) {
+                        if (result.status >= 400) {
+                            throw new Error(result.body.error || 'Failed to decrypt');
+                        }
+                        return {
+                            status: result.status,
+                            body: { content: await decryptV2Content(result.body.payload, hashKeys) }
+                        };
+                    });
+            } else {
+                readPromise = readMessageWithRetry(id, {
+                    key: hashKeys,
+                    password: password
+                });
+            }
+
+            readPromise
             .then(({status, body}) => {
                 if (status >= 400) {
                     throw new Error(body.error || 'Failed to decrypt');

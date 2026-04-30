@@ -75,6 +75,7 @@ Ensure you have Python 3.7+ installed.
 | --- | --- | --- |
 | `SECRET_KEY` | Flask secret key for sessions | Auto-generated random value |
 | `RATE_LIMIT_STORAGE_URI` | Flask-Limiter storage backend (set Redis in production) | `memory://` |
+| `OPENMESSAGE_V2_E2E` | Enable browser-side v2 WebCrypto create/read flow (`0`, `false`, `no`, `off` disable it) | `1` |
 
 ### Production Gunicorn Settings
 
@@ -110,10 +111,19 @@ Measure storage before and after deployment changes:
 
 ## How It Works
 
-1. **Creation**: User inputs a message. The server creates a random AES encryption key. This key is used to encrypt the message, and then returned to the client without being stored.
-2. **Storage**: The application stores only the ciphertext, an expiry timestamp, and an optional password hash in `data/<uuid>.json`.
-3. **Sharing**: A unique URL is generated containing the ID and the decryption key in the URL hash fragment (`http://site.com/v/<id>#<key>`).
-4. **Viewing**: The recipient opens the URL. An animated envelope confirmation page appears. Upon opening the envelope, the browser sends the key to the server. The server reads the file, **immediately deletes it** from the filesystem, decrypts the content, and returns the plain text to be rendered on the frontend.
+1. **Creation**: User inputs a message. With v2 enabled, the browser creates an AES-GCM key and encrypts locally with WebCrypto before any network request. If v2 is disabled or WebCrypto is unavailable, the legacy v1 server-side Fernet flow is used.
+2. **Storage**: v2 stores only an opaque ciphertext package, expiry metadata, and an optional password hash in `data/<uuid>.json`. The server does not receive plaintext or the WebCrypto key. v1 stores Fernet ciphertext and keeps its existing behavior.
+3. **Sharing**: A unique URL is generated containing the ID and client-held decryption material in the URL hash fragment (`http://site.com/v/<id>#v2.<key>` for v2, `#<key>` for v1). Hash fragments are not sent during normal HTTP GET navigation.
+4. **Viewing**: The recipient opens the URL. An animated envelope confirmation page appears. Upon opening the envelope, v2 retrieves the opaque ciphertext package from `/api/v2/message/<id>`, deletes it server-side, and decrypts locally in the browser. v1 keeps the previous server-decrypt API for compatibility.
+
+### v1/v2 Compatibility and Migration
+
+- Existing v1 links and stored messages continue to work through `/api/message` and `/api/message/<id>`.
+- New browsers with WebCrypto support use the v2 flow by default while `OPENMESSAGE_V2_E2E` is enabled.
+- Disable v2 with `OPENMESSAGE_V2_E2E=0` to force new messages back to the v1 API without changing existing data.
+- The `/v/<id>` confirmation page is shared by both versions because it reads only safe metadata.
+- Password protection remains server-side access control in v2: the password gates one-time retrieval of the opaque ciphertext package, but encryption and decryption stay local to the browser.
+- v2 payload validation checks only the ciphertext package format (`version`, `alg`, `iv`, `ciphertext`) and never inspects plaintext.
 
 ### Temporary Retry Semantics
 
@@ -126,6 +136,7 @@ During password-protected reads, OpenMessage may briefly hold a message file whi
 - **CSP headers**: Content-Security-Policy restricts script/style/font sources.
 - **Rate limiting**: Message creation and view endpoints are throttled (global + per-message) to reduce abuse and brute force attempts.
 - **No key storage**: The decryption key never touches the server disk; it lives only in the URL hash fragment (never sent to the server in a GET request).
+- **v2 opaque storage**: In the WebCrypto v2 flow, the server stores only an opaque AES-GCM ciphertext package and cannot decrypt message content.
 - **Expiration enforcement**: Expired messages are cleaned up automatically on creation and rejected on access.
 
 ## License

@@ -48,6 +48,12 @@ app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", os.urandom(24).hex())
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
 
 ALLOWED_EXPIRES = {3600, 86400, 604800}
+V2_E2E_ENABLED = os.environ.get("OPENMESSAGE_V2_E2E", "1").strip().lower() not in {
+    "0",
+    "false",
+    "no",
+    "off",
+}
 
 _MESSAGE_READ_ERROR_RESPONSES = {
     storage.ERROR_INVALID_ID: (404, {"error": "Secret not found or already read"}),
@@ -81,6 +87,24 @@ def _message_read_error_response(error):
         (404, {"error": "Secret not found or already read"}),
     )
     return jsonify(body), status
+
+
+def _template_flags():
+    return {"v2_e2e_enabled": V2_E2E_ENABLED}
+
+
+def _validate_expires(data):
+    expires_in = data.get("expires_in", 3600 * 24)
+    if expires_in not in ALLOWED_EXPIRES:
+        return None, (jsonify({"error": "Invalid expiration time"}), 400)
+    return expires_in, None
+
+
+def _validate_password(data):
+    password = data.get("password")
+    if password is not None and (not isinstance(password, str) or len(password) > 1024):
+        return None, (jsonify({"error": "Invalid password format"}), 400)
+    return password, None
 
 
 def _init_logging() -> None:
@@ -123,9 +147,9 @@ def set_security_headers(response):
         "object-src 'none'; "
         "frame-ancestors 'none'; "
         "form-action 'self'; "
-        "script-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; "
-        "font-src 'self' https://fonts.gstatic.com; "
+        "script-src 'self'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "font-src 'self'; "
         "img-src 'self' data:; "
         "connect-src 'self'"
     )
@@ -149,7 +173,7 @@ def handle_rate_limit(_error):
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", flags=_template_flags())
 
 
 @app.route("/api/message", methods=["POST"])
@@ -165,13 +189,13 @@ def create_message():
     if len(content) > 100000:
         return jsonify({"error": "Message too long. Maximum 100,000 characters."}), 400
 
-    password = data.get("password")
-    if password is not None and (not isinstance(password, str) or len(password) > 1024):
-        return jsonify({"error": "Invalid password format"}), 400
+    password, password_error = _validate_password(data)
+    if password_error is not None:
+        return password_error
 
-    expires_in = data.get("expires_in", 3600 * 24)
-    if expires_in not in ALLOWED_EXPIRES:
-        return jsonify({"error": "Invalid expiration time"}), 400
+    expires_in, expires_error = _validate_expires(data)
+    if expires_error is not None:
+        return expires_error
 
     key = generate_key()
 
@@ -192,6 +216,37 @@ def create_message():
     return jsonify({"id": msg_id, "key": key})
 
 
+@app.route("/api/v2/message", methods=["POST"])
+@limiter.limit("20 per minute")
+def create_v2_message():
+    if not V2_E2E_ENABLED:
+        return jsonify({"error": "v2 E2E messages are disabled"}), 404
+
+    data = request.get_json(silent=True)
+    if not data or "payload" not in data:
+        return jsonify({"error": "Missing payload"}), 400
+
+    valid_payload, payload_error = storage.validate_v2_payload(data["payload"])
+    if not valid_payload:
+        return jsonify({"error": payload_error or "Invalid payload"}), 400
+
+    password, password_error = _validate_password(data)
+    if password_error is not None:
+        return password_error
+
+    expires_in, expires_error = _validate_expires(data)
+    if expires_error is not None:
+        return expires_error
+
+    pwhash = hash_password(password) if password else None
+    payload = storage.encode_v2_payload(data["payload"])
+    msg_id = storage.save_v2_message(payload, expires_in, password_hash=pwhash)
+
+    storage.maybe_cleanup_expired()
+
+    return jsonify({"id": msg_id, "version": "v2"})
+
+
 @app.route("/v/<msg_id>")
 @limiter.limit("120 per minute")
 @limiter.limit("20 per minute", key_func=_message_attempt_key)
@@ -207,7 +262,42 @@ def view_confirm(msg_id):
             "view.html", error="Message not found or already deleted."
         ), 404
 
-    return render_template("view_confirm.html", msg=msg_meta)
+    return render_template("view_confirm.html", msg=msg_meta, flags=_template_flags())
+
+
+@app.route("/api/v2/message/<msg_id>", methods=["POST"])
+@limiter.limit("120 per minute")
+@limiter.limit("8 per minute", key_func=_message_attempt_key)
+def view_v2_message_api(msg_id):
+    if not V2_E2E_ENABLED:
+        return jsonify({"error": "v2 E2E messages are disabled"}), 404
+
+    data = request.get_json(silent=True) or {}
+    password = data.get("password")
+
+    if password is not None and (not isinstance(password, str) or len(password) > 1024):
+        return jsonify({"error": "Invalid password format"}), 400
+
+    verify_fn = None
+    msg_meta = storage.get_message_metadata(msg_id)
+    if msg_meta and msg_meta.get("has_password"):
+        if not password:
+            return jsonify({"error": "Password required", "needs_password": True}), 401
+        verify_fn = lambda pw_hash: verify_password(password, pw_hash)
+
+    msg_data, error, held_path = storage.verify_and_hold(msg_id, verify_fn)
+    if error or msg_data is None:
+        return _message_read_error_response(error)
+
+    try:
+        payload = storage.decode_v2_payload(storage.get_v2_payload(msg_data))
+        if payload is None:
+            return jsonify({"error": "Secret is not a v2 payload"}), 400
+    finally:
+        if held_path is not None:
+            storage.finish_held_message(held_path)
+
+    return jsonify({"version": "v2", "payload": payload})
 
 
 @app.route("/api/message/<msg_id>", methods=["POST"])

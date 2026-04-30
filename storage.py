@@ -1,3 +1,5 @@
+import base64
+import binascii
 import logging
 import os
 import json
@@ -106,6 +108,11 @@ PROTOCOL_VERSION = "v1"
 SUPPORTED_VERSIONS = {"v1", "v2"}
 
 V2_OPAQUE_PAYLOAD_FIELD = "payload"
+V2_PROTOCOL_VERSION = "v2"
+V2_ALGORITHM = "AES-GCM"
+V2_PAYLOAD_MAX_BYTES = 512 * 1024
+V2_PAYLOAD_MAX_ENCODED_BYTES = 700 * 1024
+V2_PAYLOAD_REQUIRED_FIELDS = frozenset({"version", "alg", "iv", "ciphertext"})
 V2_REQUIRED_TOP_LEVEL_FIELDS = frozenset(
     {"version", "id", "created_at", "expires_at", V2_OPAQUE_PAYLOAD_FIELD}
 )
@@ -136,7 +143,7 @@ def _validate_version(data: dict) -> bool:
 
 
 def is_v2_data(data: dict) -> bool:
-    return data.get("version") == "v2"
+    return data.get("version") == V2_PROTOCOL_VERSION
 
 
 def get_v2_payload(data: dict) -> Optional[str]:
@@ -144,6 +151,67 @@ def get_v2_payload(data: dict) -> Optional[str]:
         return None
     payload = data.get(V2_OPAQUE_PAYLOAD_FIELD)
     return payload if isinstance(payload, str) else None
+
+
+def _is_base64url(value: str) -> bool:
+    if not isinstance(value, str) or not value:
+        return False
+    if not re.fullmatch(r"[A-Za-z0-9_-]+={0,2}", value):
+        return False
+
+    padded = value + "=" * (-len(value) % 4)
+    try:
+        base64.urlsafe_b64decode(padded.encode("ascii"))
+    except (binascii.Error, ValueError):
+        return False
+    return True
+
+
+def validate_v2_payload(payload: Any) -> Tuple[bool, Optional[str]]:
+    """Validate only the v2 ciphertext package shape, never plaintext."""
+    if not isinstance(payload, dict):
+        return False, "payload must be an object"
+
+    if set(payload.keys()) != V2_PAYLOAD_REQUIRED_FIELDS:
+        return False, "payload fields are invalid"
+
+    if payload.get("version") != V2_PROTOCOL_VERSION:
+        return False, "payload version must be v2"
+    if payload.get("alg") != V2_ALGORITHM:
+        return False, "payload algorithm is unsupported"
+
+    iv = payload.get("iv")
+    ciphertext = payload.get("ciphertext")
+    if not _is_base64url(iv):
+        return False, "payload iv is invalid"
+    if not _is_base64url(ciphertext):
+        return False, "payload ciphertext is invalid"
+
+    if len(iv) > 64:
+        return False, "payload iv is too long"
+    if len(ciphertext.encode("utf-8")) > V2_PAYLOAD_MAX_ENCODED_BYTES:
+        return False, "payload ciphertext is too long"
+
+    payload_size = len(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
+    if payload_size > V2_PAYLOAD_MAX_BYTES:
+        return False, "payload is too large"
+
+    return True, None
+
+
+def encode_v2_payload(payload: Dict[str, Any]) -> str:
+    return json.dumps(payload, separators=(",", ":"), sort_keys=True)
+
+
+def decode_v2_payload(payload: str) -> Optional[Dict[str, Any]]:
+    if not isinstance(payload, str):
+        return None
+    try:
+        decoded = json.loads(payload)
+    except json.JSONDecodeError:
+        return None
+    valid, _error = validate_v2_payload(decoded)
+    return decoded if valid else None
 
 
 def validate_msg_id(msg_id: str) -> bool:
@@ -195,7 +263,7 @@ def build_v2_data(
     password_hash: Optional[str] = None,
 ) -> Dict[str, Any]:
     return {
-        "version": "v2",
+        "version": V2_PROTOCOL_VERSION,
         "id": msg_id,
         "created_at": created_at,
         "expires_at": expires_at,
