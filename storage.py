@@ -186,6 +186,10 @@ def validate_v2_payload(payload: Any) -> Tuple[bool, Optional[str]]:
         return False, "payload iv is invalid"
     if not _is_base64url(ciphertext):
         return False, "payload ciphertext is invalid"
+    if len(iv) < 16:
+        return False, "payload iv is too short"
+    if len(ciphertext) < 22:
+        return False, "payload ciphertext is too short"
 
     if len(iv) > 64:
         return False, "payload iv is too long"
@@ -199,7 +203,7 @@ def validate_v2_payload(payload: Any) -> Tuple[bool, Optional[str]]:
     return True, None
 
 
-def encode_v2_payload(payload: Dict[str, Any]) -> str:
+def _encode_v2_payload_for_storage(payload: Dict[str, Any]) -> str:
     return json.dumps(payload, separators=(",", ":"), sort_keys=True)
 
 
@@ -210,8 +214,13 @@ def decode_v2_payload(payload: str) -> Optional[Dict[str, Any]]:
         decoded = json.loads(payload)
     except json.JSONDecodeError:
         return None
-    valid, _error = validate_v2_payload(decoded)
-    return decoded if valid else None
+    if not isinstance(decoded, dict):
+        return None
+    if not V2_PAYLOAD_REQUIRED_FIELDS.issubset(decoded.keys()):
+        return None
+    if not isinstance(decoded.get("iv"), str) or not isinstance(decoded.get("ciphertext"), str):
+        return None
+    return decoded
 
 
 def validate_msg_id(msg_id: str) -> bool:
@@ -274,14 +283,14 @@ def build_v2_data(
 
 
 def save_v2_message(
-    payload: str, expires_in_seconds: int, password_hash: Optional[str] = None
+    payload: Dict[str, Any], expires_in_seconds: int, password_hash: Optional[str] = None
 ) -> str:
     ensure_data_dir()
     msg_id = str(uuid.uuid4())
     now = int(time.time())
 
     data = build_v2_data(
-        payload=payload,
+        payload=_encode_v2_payload_for_storage(payload),
         msg_id=msg_id,
         created_at=now,
         expires_at=now + expires_in_seconds,
@@ -373,6 +382,7 @@ def verify_and_hold(
         return None, ERROR_NOT_FOUND, None
 
     if data is None:
+        _delete_held_message(held_path)
         return None, ERROR_NOT_FOUND, None
 
     data = _ensure_version(data)

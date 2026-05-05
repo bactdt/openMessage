@@ -15,6 +15,7 @@ from crypto_utils import (
     hash_password,
     verify_password,
 )
+from config import load_config
 import storage
 
 if getattr(sys, "frozen", False):
@@ -28,7 +29,8 @@ app = Flask(
     static_folder=os.path.join(BASE_PATH, "static"),
 )
 
-RATE_LIMIT_STORAGE_URI = os.environ.get("RATE_LIMIT_STORAGE_URI", "memory://")
+APP_CONFIG = load_config()
+RATE_LIMIT_STORAGE_URI = APP_CONFIG.RATE_LIMIT_STORAGE_URI
 
 limiter = Limiter(
     key_func=get_remote_address,
@@ -44,16 +46,11 @@ def _message_attempt_key() -> str:
     return f"{get_remote_address()}:{msg_id}"
 
 
-app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", os.urandom(24).hex())
-app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
+app.config["SECRET_KEY"] = APP_CONFIG.SECRET_KEY
+app.config["MAX_CONTENT_LENGTH"] = APP_CONFIG.MAX_CONTENT_LENGTH
 
-ALLOWED_EXPIRES = {3600, 86400, 604800}
-V2_E2E_ENABLED = os.environ.get("OPENMESSAGE_V2_E2E", "1").strip().lower() not in {
-    "0",
-    "false",
-    "no",
-    "off",
-}
+ALLOWED_EXPIRES = APP_CONFIG.ALLOWED_EXPIRES
+V2_E2E_ENABLED = APP_CONFIG.V2_E2E_ENABLED
 
 _MESSAGE_READ_ERROR_RESPONSES = {
     storage.ERROR_INVALID_ID: (404, {"error": "Secret not found or already read"}),
@@ -105,6 +102,18 @@ def _validate_password(data):
     if password is not None and (not isinstance(password, str) or len(password) > 1024):
         return None, (jsonify({"error": "Invalid password format"}), 400)
     return password, None
+
+
+_PASSWORD_MISSING = object()
+
+
+def _build_password_verify_fn(password, msg_id):
+    msg_meta = storage.get_message_metadata(msg_id)
+    if not msg_meta or not msg_meta.get("has_password"):
+        return None
+    if not password:
+        return _PASSWORD_MISSING
+    return lambda pw_hash: verify_password(password, pw_hash)
 
 
 def _init_logging() -> None:
@@ -167,7 +176,9 @@ def handle_rate_limit(_error):
     if request.path.startswith("/api/"):
         return jsonify({"error": "Too many requests. Please try again later."}), 429
     return render_template(
-        "view.html", error="Too many requests. Please wait and try again."
+        "view.html",
+        error="Too many requests. Please wait and try again.",
+        flags=_template_flags(),
     ), 429
 
 
@@ -239,8 +250,7 @@ def create_v2_message():
         return expires_error
 
     pwhash = hash_password(password) if password else None
-    payload = storage.encode_v2_payload(data["payload"])
-    msg_id = storage.save_v2_message(payload, expires_in, password_hash=pwhash)
+    msg_id = storage.save_v2_message(data["payload"], expires_in, password_hash=pwhash)
 
     storage.maybe_cleanup_expired()
 
@@ -253,13 +263,17 @@ def create_v2_message():
 def view_confirm(msg_id):
     if not storage.validate_msg_id(msg_id):
         return render_template(
-            "view.html", error="Message not found or already deleted."
+            "view.html",
+            error="Message not found or already deleted.",
+            flags=_template_flags(),
         ), 404
 
     msg_meta = storage.get_message_metadata(msg_id)
     if not msg_meta:
         return render_template(
-            "view.html", error="Message not found or already deleted."
+            "view.html",
+            error="Message not found or already deleted.",
+            flags=_template_flags(),
         ), 404
 
     return render_template("view_confirm.html", msg=msg_meta, flags=_template_flags())
@@ -278,24 +292,34 @@ def view_v2_message_api(msg_id):
     if password is not None and (not isinstance(password, str) or len(password) > 1024):
         return jsonify({"error": "Invalid password format"}), 400
 
-    verify_fn = None
-    msg_meta = storage.get_message_metadata(msg_id)
-    if msg_meta and msg_meta.get("has_password"):
-        if not password:
-            return jsonify({"error": "Password required", "needs_password": True}), 401
-        verify_fn = lambda pw_hash: verify_password(password, pw_hash)
+    verify_fn = _build_password_verify_fn(password, msg_id)
+    if verify_fn is _PASSWORD_MISSING:
+        return jsonify({"error": "Password required", "needs_password": True}), 401
 
     msg_data, error, held_path = storage.verify_and_hold(msg_id, verify_fn)
     if error or msg_data is None:
         return _message_read_error_response(error)
 
-    try:
-        payload = storage.decode_v2_payload(storage.get_v2_payload(msg_data))
-        if payload is None:
-            return jsonify({"error": "Secret is not a v2 payload"}), 400
-    finally:
+    if not storage.is_v2_data(msg_data):
         if held_path is not None:
             storage.finish_held_message(held_path)
+        return jsonify({"error": "Secret is not a v2 payload"}), 400
+
+    try:
+        payload = storage.decode_v2_payload(storage.get_v2_payload(msg_data))
+    except Exception:
+        logger.exception("v2 payload decode failed")
+        if held_path is not None:
+            storage.finish_held_message(held_path)
+        return jsonify({"error": "Secret is not a v2 payload"}), 400
+
+    if payload is None:
+        if held_path is not None:
+            storage.finish_held_message(held_path)
+        return jsonify({"error": "Secret is not a v2 payload"}), 400
+
+    if held_path is not None:
+        storage.finish_held_message(held_path)
 
     return jsonify({"version": "v2", "payload": payload})
 
@@ -317,16 +341,18 @@ def view_message_api(msg_id):
     if password is not None and (not isinstance(password, str) or len(password) > 1024):
         return jsonify({"error": "Invalid password format"}), 400
 
-    verify_fn = None
-    msg_meta = storage.get_message_metadata(msg_id)
-    if msg_meta and msg_meta.get("has_password"):
-        if not password:
-            return jsonify({"error": "Password required", "needs_password": True}), 401
-        verify_fn = lambda pw_hash: verify_password(password, pw_hash)
+    verify_fn = _build_password_verify_fn(password, msg_id)
+    if verify_fn is _PASSWORD_MISSING:
+        return jsonify({"error": "Password required", "needs_password": True}), 401
 
     msg_data, error, held_path = storage.verify_and_hold(msg_id, verify_fn)
     if error or msg_data is None:
         return _message_read_error_response(error)
+
+    if storage.is_v2_data(msg_data):
+        if held_path is not None:
+            storage.finish_held_message(held_path)
+        return jsonify({"error": "Use /api/v2/message/ for this secret"}), 400
 
     try:
         plaintext = decrypt_message(msg_data["ciphertext"], key)
@@ -344,17 +370,6 @@ def view_message_api(msg_id):
 
 def _run_gunicorn_linux() -> None:
     from gunicorn.app.base import BaseApplication
-
-    workers_raw = os.environ.get("WORKERS", "4")
-    try:
-        workers = int(workers_raw)
-    except ValueError:
-        workers = 4
-    workers = max(workers, 1)
-
-    host = os.environ.get("HOST", "0.0.0.0")
-    port = os.environ.get("PORT", "5000")
-    bind = os.environ.get("BIND", f"{host}:{port}")
 
     class StandaloneApplication(BaseApplication):
         def __init__(self, application, options=None):
@@ -374,24 +389,20 @@ def _run_gunicorn_linux() -> None:
         def load(self):
             return self.application
 
-    StandaloneApplication(app, {"bind": bind, "workers": workers}).run()
+    StandaloneApplication(
+        app,
+        {"bind": APP_CONFIG.BIND, "workers": APP_CONFIG.WORKERS},
+    ).run()
 
 
 if __name__ == "__main__":
     if getattr(sys, "frozen", False):
-        host = os.environ.get("HOST", "0.0.0.0")
-        port_raw = os.environ.get("PORT", "5000")
-        try:
-            port = int(port_raw)
-        except ValueError:
-            port = 5000
-
         if platform.system() == "Linux":
             try:
                 _run_gunicorn_linux()
             except Exception:
-                app.run(host=host, port=port, debug=False)
+                app.run(host=APP_CONFIG.HOST, port=APP_CONFIG.PORT, debug=False)
         else:
-            app.run(host=host, port=port, debug=False)
+            app.run(host=APP_CONFIG.HOST, port=APP_CONFIG.PORT, debug=False)
     else:
         app.run(debug=True, port=5000)
