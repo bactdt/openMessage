@@ -334,11 +334,11 @@ def get_message_metadata(msg_id: str) -> Optional[Dict[str, Any]]:
     if not os.path.exists(file_path):
         return None
 
-    with open(file_path, "r") as f:
-        try:
+    try:
+        with open(file_path, "r") as f:
             data = json.load(f)
-        except json.JSONDecodeError:
-            return None
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return None
 
     data = _ensure_version(data)
 
